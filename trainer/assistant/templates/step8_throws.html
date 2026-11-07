@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Capture real throws{% endblock %}
+{% block content %}
+<h1>8 · Capture real throws</h1>
+{% include "_camera.html" %}
+
+<details class="card" {% if not st.total %}open{% endif %}>
+<summary>Guide: what to do, and why?</summary>
+<div class="twocol" style="margin-top:8px"><div>
+<p><b>What for?</b> These captures are the <b>real test images</b>. Only they show how good the recognition really is. Synthetic images alone
+deceive (a model can reach 99 % on synthetic test images and still show weaknesses on real camera images). They are also used to check and fine-tune the models.</p>
+<ol>
+  <li>Throw, leave the dice, hold the camera board <b>as when playing</b>.</li>
+  <li><b>Capture</b> (button or <b>space bar</b>). Without AI, this is quick.</li>
+  <li>Throw again … Target: <b>{{ target_min }}-{{ target_max }} captures</b>. Several sessions are fine, the count continues.<br><span class="small">10 are enough for a first impression; for reliable numbers (e.g. to tell 95 % from 99 %) rather 100.</span></li>
+  <li>Labelling follows in step 9.</li>
+</ol>
+</div><div>
+<p><b>Variety matters</b> - please mix deliberately:</p>
+<ul>
+  <li>close and further away, steeper and flatter{% if cs and cs.elevation_deg %} (your camera setup: {{ cs.elevation_deg.min }}°-{{ cs.elevation_deg.max }}°{% if cs.distance_cm %}, {{ cs.distance_cm.min }}-{{ cs.distance_cm.max }} cm{% endif %}){% endif %}</li>
+  <li>different light: daylight, lamp, weaker in the evening</li>
+  <li>dice that <b>touch</b> each other or lie at the <b>wall</b></li>
+  <li>now and then a die <b>tilted</b> (leaning against the wall) - that later becomes “?”</li>
+  <li>all symbols often enough, not only “nice” throws</li>
+</ul>
+<p class="small">Please <b>with the camera board</b>, not with the phone: different sharpness, colours, noise and a different lens.</p>
+</div></div>
+</details>
+
+<div class="card">
+{% if stream %}
+<div class="live">
+  <div>
+    <img id="live" src="{{ stream }}" alt="Live view from the camera board" onerror="this.alt='No live view - board switched on? Same Wi-Fi? Address right?'">
+    <div class="small">Live view: {{ stream }} · <a href="#" onclick="document.getElementById('live').src='{{ stream }}?'+Date.now();return false">reconnect</a></div>
+  </div>
+  <div>
+    <p><button id="capture" style="font-size:1.15em;padding:12px 26px">📷 Capture</button></p>
+    <p class="small">Capture at {{ camera.width }}×{{ camera.height }},
+      {% if camera.fixed_exposure %}fixed exposure (aec {{ camera.fixed_exposure.aec }}, gain {{ camera.fixed_exposure.gain }}){% else %}auto exposure {{ '%+d'|format(camera.exposure_level) if camera.exposure_level else '0' }}{% endif %}
+      - like the firmware later{% if not p.camera %} (default; set it in step 1 with “Apply”){% endif %}.</p>
+    <p style="font-size:1.4em;margin:6px 0"><b id="count">{{ st.total }}</b> <span class="small">captures · target {{ target_min }}-{{ target_max }}</span></p>
+    <div style="background:#e3e8e5;border-radius:6px;height:10px;width:240px"><div id="bar" style="background:var(--felt);height:10px;border-radius:6px;width:{{ [100, st.total * 100 // target_max]|min }}%"></div></div>
+    <p id="cap_status" class="small">Tip: space bar = capture</p>
+    <p><button class="second mini" id="delete_last" {{ '' if last else 'disabled' }}>↶ delete the last capture</button></p>
+  </div>
+</div>
+{% else %}
+<div class="warning">No camera board address entered → <a href="{{ url_for('setup', back=folder) }}">Setup</a></div>
+{% endif %}
+<details style="margin-top:10px"><summary>Alternatively upload images from the camera board</summary>
+  {% set k = camera %}<p class="small">Only images from the camera board at {{ k.width }}×{{ k.height }} with the exposure of the project (step 1),
+  e.g. saved from the board's own page:
+  <code>http://&lt;board&gt;/api/capture?res={{ k.resolution }}{% if k.fixed_exposure %}&amp;aec={{ k.fixed_exposure.aec }}&amp;gain={{ k.fixed_exposure.gain }}{% else %}&amp;exposure={{ k.exposure_level }}{% endif %}</code></p>
+  <input type="file" id="file" accept="image/jpeg" multiple> <span id="upl" class="small"></span>
+</details>
+</div>
+
+{% if last %}
+<h2>Last captures</h2>
+<div class="photogrid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
+{% for n in last %}
+  <div class="photocard"><img src="{{ url_for('raw_image', folder=folder, name=n, g=200) }}" loading="lazy">
+    <div class="small">{{ n }}</div></div>
+{% endfor %}
+</div>
+{% endif %}
+<p class="small">Saved in <code>{{ raw_path }}</code></p>
+<p><a class="btn" href="{{ url_for('label_page', folder=folder) }}">on to step 9 · Label →</a></p>
+{% endblock %}
+
+{% block script %}
+<script>
+const btn = document.getElementById('capture');
+let lastName = {{ (last[0] if last else '')|tojson }};
+async function capture() {
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const st = document.getElementById('cap_status');
+  st.textContent = 'fetching image …';
+  const r = await postJSON("{{ url_for('throws_capture', folder=folder) }}");
+  btn.disabled = false;
+  if (r.ok) {
+    lastName = r.name;
+    document.getElementById('count').textContent = r.count;
+    document.getElementById('bar').style.width = Math.min(100, r.count * 100 / {{ target_max }}) + '%';
+    st.innerHTML = `<span class="ok">✔ ${r.name} saved</span> - throw again and capture again`;
+    document.getElementById('delete_last').disabled = false;
+  } else st.innerHTML = '<span class="bad">' + r.error + '</span>';
+}
+if (btn) btn.onclick = capture;
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && btn && !['INPUT','SELECT','TEXTAREA','BUTTON'].includes(document.activeElement.tagName)) { e.preventDefault(); capture(); }
+});
+const dl = document.getElementById('delete_last');
+if (dl) dl.onclick = async () => {
+  if (!lastName || !confirm(`Delete capture ${lastName} for good?`)) return;
+  await postJSON("{{ url_for('raw_delete', folder=folder, name='XXXX') }}".replace('XXXX', lastName));
+  location.reload();
+};
+document.getElementById('file').onchange = async ev => {
+  const fd = new FormData(); for (const f of ev.target.files) fd.append('images', f);
+  document.getElementById('upl').textContent = 'uploading …';
+  await fetch("{{ url_for('throws_upload', folder=folder) }}", {method: 'POST', body: fd});
+  location.reload();
+};
+</script>
+{% endblock %}

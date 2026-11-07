@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% set active = 'index' %}
+{% block title %}Projects{% endblock %}
+{% block content %}
+<h1>Projects</h1>
+<p>A project contains everything for <b>one set of dice</b>: sizes, photos, symbols, camera setup. Each project has its own
+folder under <code>{{ WORKSPACE|path('projects') }}</code> and is complete in itself - later the Colab package is built from exactly this folder.</p>
+
+{% if not api_key_present or not sett.device_address %}
+<div class="warning">Not set up yet: {% if not api_key_present %}API key{% endif %}{% if not api_key_present and not sett.device_address %} and {% endif %}{% if not sett.device_address %}camera board address{% endif %} missing.
+→ <a href="{{ url_for('setup') }}">Step 0 · Setup</a></div>
+{% endif %}
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if message %}<div class="note">{{ message }}</div>{% endif %}
+
+<div class="card">
+  {% if projects %}
+  <table>
+    <tr><th>Project</th><th>Folder</th><th>Progress</th><th>last changed</th></tr>
+    {% for pr in projects %}
+    <tr>
+      <td><a href="{{ url_for('project', folder=pr.folder) }}"><b>{{ pr.name }}</b></a>{% if pr.error %} <span class="bad">({{ pr.error }})</span>{% endif %}</td>
+      <td><code>{{ pr.folder }}</code></td>
+      <td>{% if pr.total %}{{ pr.done }} of {{ pr.total }} steps{% endif %}</td>
+      <td class="small">{{ (pr.modified or '')|replace('T', ' ') }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No project yet. Create the first one below, e.g. “My_Dice”.</p>
+  {% endif %}
+</div>
+
+<h2>New project</h2>
+<div class="card">
+<form method="post" action="{{ url_for('new') }}">
+  <label class="row"><span>Name</span><input type="text" name="name" required placeholder="e.g. My Dice" size="30"></label>
+  <p class="small">The folder name is made file-system friendly (“Blue Dice” → <code>Blue_Dice</code>).
+  If the folder exists already, nothing is created (projects never overwrite each other).</p>
+  {% if projects %}
+  <details><summary>Copy parts from an existing project (optional)</summary>
+    <label class="row"><span>Source project</span>
+      <select name="source"><option value="">– none –</option>
+      {% for pr in projects %}<option value="{{ pr.folder }}">{{ pr.name }}</option>{% endfor %}</select></label>
+    {% for k, t in parts.items() %}
+    <label class="row"><input type="checkbox" name="parts" value="{{ k }}"> {{ t.title }}</label>
+    {% endfor %}
+    <p class="small">Useful if only the dice are new (same tray, same surroundings). The files are copied, the source project stays unchanged.</p>
+  </details>
+  {% endif %}
+  <p><button type="submit">Create project</button></p>
+</form>
+</div>
+{% endblock %}

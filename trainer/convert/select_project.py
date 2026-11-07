@@ -1,0 +1,210 @@
+"""Prepares the models of a project for the firmware and copies them into firmware/models/.
+
+The firmware is the same code for all projects. This script
+  1. writes <project>/models/model_config.h (class names, ranks, sizes, thresholds, camera from step 1, version);
+     an older version moves to <project>/models/backup_<time>/,
+  2. copies the three files dice_det.espdl, dice_cls.espdl and model_config.h into <firmware>/models/.
+     What was there before moves to <workspace>/firmware_models_backup/<time>/ - nothing is overwritten.
+The project name appears nowhere in the firmware.
+
+model_config.h is the interface to any firmware: if you use the models in your own firmware, copy the
+same three files (see docs/use_models_in_your_firmware.md). --firmware can be given several times.
+
+Symbol names: known poker dice symbols get a fixed rank (9 < 10 < J < Q < K < A, also B/D for jack/queen);
+other names are ranked in the order of the class list.
+
+Examples (from the repository folder, with the virtual environment):
+  .venv\\Scripts\\python.exe trainer\\convert\\select_project.py --help
+  .venv\\Scripts\\python.exe trainer\\convert\\select_project.py --project workspace\\projects\\My_Dice
+  .venv\\Scripts\\python.exe trainer\\convert\\select_project.py --project workspace\\projects\\My_Dice --dice 5
+  .venv\\Scripts\\python.exe trainer\\convert\\select_project.py --project workspace\\projects\\My_Dice --firmware firmware --firmware D:\\other\\firmware
+  (Linux/macOS: .venv/bin/python trainer/convert/select_project.py --project workspace/projects/My_Dice)
+"""
+import argparse
+import datetime
+import json
+import os
+import shutil
+import sys
+
+REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+
+# known poker dice order (low -> high)
+POKER_ORDER = ["9", "10", "J", "Q", "K", "A"]
+SYNONYMS = {"B": "J", "JACK": "J", "D": "Q", "QUEEN": "Q", "K": "K", "KING": "K",
+            "A": "A", "ACE": "A", "9": "9", "10": "10", "J": "J", "Q": "Q"}
+
+MODEL_FILES = ["dice_det.espdl", "dice_cls.espdl", "model_config.h"]
+PARTITION_LIMIT = {"dice_det.espdl": 0x200000, "dice_cls.espdl": 0x100000}   # firmware/partitions.csv
+
+
+def ranks(classes):
+    """Rank per class (0 = lowest) for the poker scoring; '?' = -1.
+    Known names (9 10 J/B Q/D K A) -> poker order, otherwise the order of the class list."""
+    real = [k for k in classes if k != "?"]
+    norm = [SYNONYMS.get(k.strip().upper()) for k in real]
+    if all(n is not None for n in norm) and len(set(norm)) == len(norm):
+        order = sorted(norm, key=POKER_ORDER.index)
+        rank_of = {n: order.index(n) for n in norm}
+        r = {k: rank_of[n] for k, n in zip(real, norm)}
+    else:
+        r = {k: i for i, k in enumerate(real)}
+    return [r.get(k, -1) for k in classes]
+
+
+def english_names(classes):
+    """Display name per class: known symbols in the usual English form (B -> J, D -> Q), others unchanged."""
+    result = []
+    for k in classes:
+        n = SYNONYMS.get(k.strip().upper())
+        result.append(n if n else k)
+    return result
+
+
+def c_text(s):
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def camera_from_project(project):
+    """(width, height, exposure level, aec, gain, set) from project.json "camera" (step 1).
+    aec = -1: auto exposure with the level as correction."""
+    try:
+        with open(os.path.join(project, "project.json"), encoding="utf-8") as f:
+            k = json.load(f).get("camera") or {}
+    except (OSError, ValueError):
+        k = {}
+    try:
+        w, h = [int(v) for v in str(k.get("resolution", "640x480")).split("x")]
+    except ValueError:
+        w, h = 640, 480
+    level = max(-2, min(2, int(k.get("exposure_level", 0) or 0)))
+    fx = k.get("fixed_exposure") if isinstance(k.get("fixed_exposure"), dict) else None
+    aec, gain = (int(fx["aec"]), int(fx.get("gain", 0))) if fx and "aec" in fx else (-1, 0)
+    return w, h, level, aec, gain, bool(k)
+
+
+def without_paths(x):
+    """Reports without texts that could contain paths (and with them project or user names)."""
+    if isinstance(x, dict):
+        return {k: without_paths(v) for k, v in x.items() if not (isinstance(v, str) and any(c in v for c in ":/\\"))}
+    if isinstance(x, list):
+        return [without_paths(v) for v in x]
+    return x
+
+
+def new_folder(path):
+    """Creates path; if it exists already (second call in the same second), path_2, path_3 ... - never overwrite."""
+    candidate, n = path, 2
+    while os.path.exists(candidate):
+        candidate, n = f"{path}_{n}", n + 1
+    os.makedirs(candidate)
+    return candidate
+
+
+def config_h(det, cls, dice, reports, camera=(640, 480, 0, -1, 0)):
+    kl = cls["classes"]
+    rk = ranks(kl)
+    en = english_names(kl)
+    stamp = datetime.datetime.now().strftime("%d.%m.%y %H:%M")
+    unsure = kl.index("?") if "?" in kl else -1
+    lines = [
+        "// Generated by trainer/convert/select_project.py - do not edit by hand.",
+        "#pragma once",
+        "",
+        f'#define MC_VERSION          {c_text(stamp)}',
+        f"#define MC_DET_IMGSZ        {int(det['imgsz'])}",
+        f"#define MC_DET_THRESHOLD    {float(det.get('threshold', 0.35)):.3f}f",
+        f"#define MC_DET_NMS_IOU      {float(det.get('nms_iou', 0.5)):.3f}f",
+        f"#define MC_CLS_SIZE         {int(cls['size'])}",
+        f"#define MC_CLS_MARGIN       {float(cls.get('margin', 0.25)):.3f}f",
+        f"#define MC_CLASSES          {len(kl)}",
+        f"#define MC_CLASS_UNSURE     {unsure}",
+        f"#define MC_DICE             {int(dice)}",
+        f"#define MC_CLASS_NAMES_EN   {{ {', '.join(c_text(k) for k in en)} }}",
+        f"#define MC_CLASS_RANK       {{ {', '.join(str(r) for r in rk)} }}",
+        f"#define MC_CAMERA_W         {int(camera[0])}",
+        f"#define MC_CAMERA_H         {int(camera[1])}",
+        f"#define MC_CAMERA_EXPOSURE  {int(camera[2])}",
+        f"#define MC_CAMERA_AEC       {int(camera[3])}      // -1 = auto exposure with MC_CAMERA_EXPOSURE as correction",
+        f"#define MC_CAMERA_GAIN      {int(camera[4])}",
+    ]
+    for name, b in reports.items():
+        if b:
+            text = json.dumps(without_paths(b), ensure_ascii=False).replace("\\", "/")[:300]   # no \ at the end of a line!
+            lines.append(f"// {name}: {text}")
+    return "\n".join(lines) + "\n"
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description="Prepare the models of a project for the firmware and copy them into firmware/models.",
+        epilog="Example: .venv\\Scripts\\python.exe trainer\\convert\\select_project.py --project workspace\\projects\\My_Dice")
+    ap.add_argument("--project", required=True, help="project folder, e.g. workspace\\projects\\My_Dice")
+    ap.add_argument("--firmware", action="append",
+                    help="firmware folder (default: firmware in the repository); can be given several times")
+    ap.add_argument("--dice", type=int, default=5, help="number of dice in the game (default 5)")
+    ap.add_argument("--workspace", help="workspace folder for backups (default: workspace in the repository)")
+    args = ap.parse_args()
+
+    project = os.path.abspath(args.project)
+    firmwares = [os.path.abspath(f) for f in (args.firmware or [os.path.join(REPO, "firmware")])]
+    workspace = os.path.abspath(args.workspace or os.path.join(REPO, "workspace"))
+    export, models = os.path.join(project, "export"), os.path.join(project, "models")
+    missing = [p for p in (os.path.join(export, "det_info.json"), os.path.join(export, "cls_info.json"),
+                           os.path.join(models, "dice_det.espdl"), os.path.join(models, "dice_cls.espdl"))
+               + tuple(os.path.join(fw, "CMakeLists.txt") for fw in firmwares) if not os.path.isfile(p)]
+    if missing:
+        print("Missing:\n  " + "\n  ".join(missing))
+        sys.exit(1)
+
+    with open(os.path.join(export, "det_info.json"), encoding="utf-8") as f:
+        det = json.load(f)
+    with open(os.path.join(export, "cls_info.json"), encoding="utf-8") as f:
+        cls = json.load(f)
+    reports = {}
+    for n in ("det_report.json", "cls_report.json"):
+        p = os.path.join(models, n)
+        if os.path.isfile(p):
+            with open(p, encoding="utf-8") as f:
+                reports[n] = json.load(f)
+
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # 1. model_config.h in the project (keep an older version)
+    if os.path.exists(os.path.join(models, "model_config.h")):
+        old = new_folder(os.path.join(models, "backup_" + stamp))
+        shutil.move(os.path.join(models, "model_config.h"), os.path.join(old, "model_config.h"))
+        print(f"Older version saved in {old}")
+    cam = camera_from_project(project)
+    with open(os.path.join(models, "model_config.h"), "w", encoding="utf-8", newline="\n") as f:
+        f.write(config_h(det, cls, args.dice, reports, cam[:5]))
+
+    # 2. copy into each firmware; what was there goes to <workspace>/firmware_models_backup/<time>/
+    for i, fw in enumerate(firmwares, 1):
+        fw_models = os.path.join(fw, "models")
+        os.makedirs(fw_models, exist_ok=True)
+        old = [os.path.join(fw_models, n) for n in MODEL_FILES if os.path.exists(os.path.join(fw_models, n))]
+        if old:
+            backup = new_folder(os.path.join(workspace, "firmware_models_backup", stamp + (f"_{i}" if len(firmwares) > 1 else "")))
+            for p in old:
+                shutil.move(p, os.path.join(backup, os.path.basename(p)))
+            print(f"Previous firmware models saved in {backup}")
+        for n in MODEL_FILES:
+            shutil.copy2(os.path.join(models, n), os.path.join(fw_models, n))
+        print(f"Done - models in {fw_models}")
+
+    sizes = {n: os.path.getsize(os.path.join(models, n)) for n in PARTITION_LIMIT}
+    for n, g in sizes.items():
+        print(f"  {n:20s} {g / 1024:7.1f} KB")
+    print(f"  Classes: {', '.join(cls['classes'])}   ranks: {ranks(cls['classes'])}")
+    print(f"  Detector {det['imgsz']} px, crop {cls['size']} px")
+    w, h, level, aec, gain, cam_set = cam
+    print(f"  Camera {w}x{h}, " + (f"fixed exposure aec {aec}, gain {gain}" if aec >= 0 else f"auto exposure {level:+d}")
+          + ("" if cam_set else "  (default - set it in step 1 with “Apply”)"))
+    for n, limit in PARTITION_LIMIT.items():
+        if sizes[n] > limit:
+            print(f"WARNING: {n} is larger than its partition ({limit // 1024} KB) - adjust firmware/partitions.csv!")
+    print("Next step: build and flash the firmware (idf.py build flash, see docs/convert_and_flash.md).")
+
+
+if __name__ == "__main__":
+    main()

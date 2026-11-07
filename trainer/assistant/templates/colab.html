@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Ready for Colab?{% endblock %}
+{% block content %}
+<h1>Ready for Colab?</h1>
+{% if message %}<div class="note">{{ message }}</div>{% endif %}
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<p>Here you see whether everything the Colab notebooks need for rendering and training is there. Each point turns green as soon as it is met.</p>
+
+<div class="card">
+<table>
+  <tr><th style="width:40px"></th><th>Step</th><th>State</th></tr>
+  {% for x in items %}
+  <tr>
+    <td class="tick {{ 'done' if x.ok else 'open' }}" style="font-size:1.2em">{{ '✔' if x.ok else '✘' }}</td>
+    <td><a href="{{ url_for('step', folder=folder, nr=x.nr) }}">{{ x.nr }} · {{ x.title }}</a></td>
+    <td class="{{ '' if x.ok else 'tight' }}">{{ x.text }}</td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+
+{% if ready %}
+<div class="note"><b>✔ All ready.</b> Now create the Colab package.</div>
+{% else %}
+<div class="warning">Not everything is done yet. You can still create a package (e.g. to try things out), but it is incomplete.</div>
+{% endif %}
+
+<h2>Colab package</h2>
+<div class="card">
+{% if missing_notebooks %}<div class="error">Notebooks missing in <code>trainer/colab/notebooks</code>: {{ missing_notebooks|join(', ') }}.</div>{% endif %}
+<form method="post" action="{{ url_for('colab_package_create', folder=folder) }}"
+      {% if not ready %}onsubmit="return confirm('Not everything is done yet. Create an (incomplete) package anyway?')"{% endif %}>
+  <p style="margin-top:0">Creates a ZIP file with exactly the folder structure needed in Google Drive:</p>
+<pre class="cmd" style="white-space:pre">{{ drive }}/
+  scripts/                 Blender and helper scripts (render, check, contact sheet, training)
+  notebooks/               1_setup … 5_all_in_one (project name already filled in)
+  projects/{{ folder }}/   project.json + all photos
+                           + test_images/ ({{ test_count }} confirmed test images from step 9)</pre>
+  <p class="small">In addition <code>1_setup_{{ folder }}_….ipynb</code> is created as a separate file - you need it only for opening Colab the very first time.</p>
+  <button type="submit">📦 Create Colab package</button>
+  <span class="small">Saved in <code>{{ packages_folder }}</code> - every package with its own time stamp, nothing is overwritten.</span>
+</form>
+{% if packages %}
+<p><b>Existing packages:</b></p>
+<ul>{% for n in packages %}<li><code>{{ n }}</code></li>{% endfor %}</ul>
+{% endif %}
+</div>
+
+<h2>How the package gets to Google Drive and Colab</h2>
+<div class="card">
+<p><b>Important:</b> do <b>not unpack</b> the ZIP file. The notebook unpacks it itself. (If you uploaded an unpacked folder,
+Google Drive would create a <i>second</i> folder with the same name instead of merging.)</p>
+<p><b>The first time:</b></p>
+<ol>
+  <li><b>drive.google.com</b> → “My Drive” → <b>New → Folder</b> “{{ drive }}”, inside it a folder <b>“packages”</b>.</li>
+  <li>Drag the newest ZIP file <code>Colab_{{ folder }}_….zip</code> from <code>{{ packages_folder }}</code> into
+     <b>{{ drive }} → packages</b>.</li>
+  <li>Open the notebook <code>1_setup_{{ folder }}_….ipynb</code>: <b>colab.research.google.com</b> → <b>File → Upload notebook</b>
+     → choose the .ipynb file.</li>
+  <li>In Colab: <b>Runtime → Change runtime type → L4 GPU</b> (or T4), then run the cells in order. The notebook unpacks the package;
+     afterwards all notebooks are in Drive under <b>{{ drive }} → notebooks</b>.</li>
+</ol>
+<p><b>Later (new photos, new test images, new version):</b> create a new package, upload the ZIP file to <b>packages</b> again,
+double-click the matching notebook in Drive <b>{{ drive }} → notebooks</b> (→ “Open with Google Colaboratory”) and run everything.
+The newest package is unpacked automatically; renders, crops and trained models are kept.</p>
+<p class="small">If “Open with Google Colaboratory” does not appear: right click → Open with → Connect more apps → search for “Colaboratory” and add it.</p>
+</div>
+
+<h2>Important in practice</h2>
+<div class="warning">
+<ul style="margin:0">
+  <li><b>End the session at the end:</b> a connected Colab session uses compute units even when it does nothing.
+    Each notebook ends with the cell “End session”: set <code>END_SESSION = True</code> and queue it with ▶ -
+    it runs after all other cells. Or by hand: <b>Runtime → Disconnect and delete runtime</b>.</li>
+  <li><b>Colab does not guarantee how long a session runs.</b> A session can end after several hours (also with a paid plan,
+    or when the compute units run out). Nothing is lost: open the notebook again and <b>Run all</b> - finished chunks,
+    crops and training runs are skipped, started ones continue. The preview in <code>1_setup</code> measures how long the
+    full render takes - if that is many hours, <code>2_render</code> and the training in separate sessions is the safer plan.</li>
+  <li><b>Do not upload a new package while something is running in Colab</b> - at the next start scripts and notebooks in Drive are replaced.</li>
+  <li><b>Download <code>export</code> only when the detector and the classifier have both been exported</b> - before that it is incomplete.</li>
+</ul>
+<p class="small" style="margin-bottom:0">More in docs/colab.md.</p>
+</div>
+{% endblock %}

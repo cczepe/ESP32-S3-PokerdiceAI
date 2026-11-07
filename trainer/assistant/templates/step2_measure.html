@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Measure the die{% endblock %}
+{% block content %}
+<h1>2 · Measure the die</h1>
+{% include "_camera.html" %}
+{% if request.args.get('saved') %}<div class="note">Saved.</div>{% endif %}
+
+<details class="card" open>
+<summary>Guide: what to do, and why?</summary>
+<div class="twocol" style="margin-top:8px">
+<div>
+<p><b>What for?</b> A 3D die in real size is built in Blender. So that it looks just as large and just as
+“round” on the renders as yours, we need three values.</p>
+<ol>
+  <li><b>Edge length:</b> measure from face to face with a caliper (most accurate) or a ruler, best at 2-3 places, average.
+     Poker dice are usually 15-19 mm.</li>
+  <li><b>Corner radius:</b> how much edges and corners are rounded, as a radius in mm. An estimate is enough:
+     sharp edges ≈ 0.5 mm, clearly round ≈ 1.5-2.5 mm, very round ≈ 3 mm.
+     More exact: lay a ruler flat on a face and look against the light - the rounding starts where light
+     comes through; or radius = (edge length − width of the flat face) / 2.</li>
+  <li><b>Body color:</b> colour of the die body (without symbols), e.g. ivory, white, cream.</li>
+</ol>
+</div>
+<div>
+<svg viewBox="0 0 300 150" width="300" style="background:#fafafa;border:1px solid #ddd;border-radius:6px">
+  <rect x="20" y="25" width="100" height="100" rx="14" fill="#f3ead7" stroke="#555" stroke-width="2"/>
+  <line x1="20" y1="138" x2="120" y2="138" stroke="#c00"/><line x1="20" y1="133" x2="20" y2="143" stroke="#c00"/>
+  <line x1="120" y1="133" x2="120" y2="143" stroke="#c00"/>
+  <text x="70" y="150" font-size="11" text-anchor="middle" fill="#c00">edge length</text>
+  <circle cx="34" cy="39" r="14" fill="none" stroke="#06c" stroke-dasharray="3 2"/>
+  <text x="58" y="20" font-size="11" fill="#06c">rounding = radius</text>
+  <g transform="translate(170,25)">
+    <rect x="0" y="0" width="30" height="30" rx="1" fill="#f3ead7" stroke="#555"/><text x="15" y="45" font-size="9" text-anchor="middle">≈0.5</text>
+    <rect x="40" y="0" width="30" height="30" rx="5" fill="#f3ead7" stroke="#555"/><text x="55" y="45" font-size="9" text-anchor="middle">≈2</text>
+    <rect x="80" y="0" width="30" height="30" rx="9" fill="#f3ead7" stroke="#555"/><text x="95" y="45" font-size="9" text-anchor="middle">≈3 mm</text>
+    <text x="55" y="70" font-size="10" text-anchor="middle">(at about 16 mm edge)</text>
+  </g>
+</svg>
+<p class="small">Typical mistakes: measuring over the rounded edges (too small) or at an angle (too large).</p>
+</div>
+</div>
+</details>
+
+<div class="card">
+<form method="post" action="{{ url_for('step2_save', folder=folder) }}">
+  <label class="row"><span>Edge length (mm)</span>
+    <input type="number" name="edge_mm" min="5" max="50" step="0.1" value="{{ p.die.edge_mm or '' }}" style="width:90px" required>
+    {% if p.die.edge_mm %}<span class="small">(also entered in step 1 - same field)</span>{% endif %}</label>
+  <label class="row"><span>Corner radius (mm)</span>
+    <input type="number" name="corner_radius_mm" min="0" max="10" step="0.1" value="{{ p.die.corner_radius_mm or '' }}" style="width:90px" required></label>
+  <label class="row"><span>Body color</span>
+    <input type="color" name="body_color" value="{{ p.die.body_color or '#f3ead7' }}" style="width:60px;height:32px;vertical-align:middle">
+    <input type="text" name="body_color_text" value="{{ p.die.body_color_text or '' }}" placeholder="e.g. ivory" size="16">
+    <span class="small">Click the colour field and choose roughly; it gets more exact later from the face photos.</span></label>
+  <button type="submit">Save</button>
+</form>
+</div>
+<p>Status: <b>{{ {'open':'open','in_progress':'in progress','done':'done ✔'}[p.steps[step_id].status] }}</b></p>
+<p><a class="btn" href="{{ url_for('step_a', folder=folder, nr=3) }}">on to step 3 · Photograph the 6 faces →</a></p>
+{% endblock %}

@@ -1,0 +1,7 @@
+{
+ "1_setup": 1,
+ "2_render": 1,
+ "3_detector": 2,
+ "4_classifier": 1,
+ "5_all_in_one": 2
+}

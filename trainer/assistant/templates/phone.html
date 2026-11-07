@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ s.title }} · phone</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:system-ui,sans-serif;margin:0;background:#f6f7f5;color:#1f2a24}
+header{background:#2f6b4a;color:#fff;padding:12px 14px}
+header small{opacity:.8}
+main{padding:12px 14px;max-width:560px;margin:auto}
+.btn{display:block;width:100%;text-align:center;background:#e09a3c;color:#fff;border:0;border-radius:10px;padding:18px;font-size:1.2em;margin:10px 0;cursor:pointer}
+.btn.second{background:#fff;color:#2f6b4a;border:2px solid #2f6b4a;font-size:1em;padding:12px}
+.card{background:#fff;border:1px solid #d9dfdb;border-radius:8px;padding:10px;margin:10px 0}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.grid img{width:100%;border-radius:4px;aspect-ratio:1;object-fit:cover}
+.ok{color:#2e8b57;font-weight:600}.warn{color:#c98a00}.error{color:#c0392b;font-weight:600}
+.tip{font-size:.92em;line-height:1.4}
+</style>
+</head>
+<body>
+<header><b>📱 {{ s.nr }} · {{ s.title }}</b><br><small>Project {{ p.name }} · photos land directly in the trainer</small></header>
+<main>
+<div class="card tip">
+{% if step == '3_faces' %}
+  Put the die on the <b>green felt</b> (or a dark, matt surface). Phone <b>straight</b> above it, 30-40 cm away, <b>2× zoom</b>, tap on the die (focus and brightness), no flash. Ruler optional.
+  One photo for each of the 6 faces: turn the die so that the next face is on top.
+{% elif step == '4_corners' %}
+  Photograph a <b>corner</b> at an angle, so that <b>3 faces</b> are equally well visible.
+  Photo 1 and 2: two opposite corners of the top face. Then turn the die over, photo 3 and 4: two opposite corners of the (new) top face.
+{% elif step == '5_tray' %}
+  Without dice. <b>From above</b>: phone level, straight above the centre. <b>From the side</b>: at tray height, wall clearly visible.
+{% elif step == '6_felt' %}
+  Only felt in the picture, <b>straight</b> from above, 20-30 cm away, no own shadow, no flash.
+{% elif step == '7_surroundings' %}
+  10-20 photos of the table and room where you play - different directions and light. <b>No dice</b> in the picture.
+{% endif %}
+</div>
+
+{% if cfg.names %}
+  {% for n in cfg.names %}
+  <label class="btn" id="k_{{ n }}">📷 {{ names_text[n] }}
+    <input type="file" accept="image/*" capture="environment" style="display:none" data-wish="{{ n }}"></label>
+  {% endfor %}
+{% else %}
+  <label class="btn">📷 Take photo
+    <input type="file" accept="image/*" capture="environment" style="display:none"></label>
+  <label class="btn second">🖼 choose from the gallery
+    <input type="file" accept="image/*" multiple style="display:none"></label>
+{% endif %}
+<div id="status" class="card" style="display:none"></div>
+
+<div class="card">
+  <b id="counter">Photos: …</b>
+  <div class="grid" id="grid" style="margin-top:8px"></div>
+</div>
+<p class="tip" style="color:#6b756f">Check and delete on the computer in the trainer. You can leave this page open.</p>
+</main>
+<script>
+const URL_UP = "{{ url_for('photo_upload', folder=folder, step=step) }}";
+const URL_LIST = "{{ url_for('photo_list', folder=folder, step=step) }}";
+const URL_IMG = "{{ url_for('photo_image', folder=folder, step=step, name='XXXX') }}";
+const st = document.getElementById('status');
+function show(html) { st.style.display = 'block'; st.innerHTML = html; }
+
+async function list() {
+  const r = await (await fetch(URL_LIST)).json();
+  const n = r.photos.length;
+  document.getElementById('counter').textContent =
+    `Photos: ${n}` + (r.min === r.max ? ` of ${r.max}` : ` (at least ${r.min}, at most ${r.max})`) + (n >= r.min ? ' ✔' : '');
+  document.getElementById('grid').innerHTML = r.photos.map(f =>
+    `<div><img src="${URL_IMG.replace('XXXX', f.name)}?g=300"><div style="font-size:.75em">${f.title}` +
+    (f.check.ok ? ' <span class="ok">✔</span>' : ' <span class="warn">⚠</span>') + `</div></div>`).join('');
+  if (r.names) for (const nm of r.names) {
+    const k = document.getElementById('k_' + nm);
+    if (k) k.style.opacity = r.photos.some(f => f.name === nm + '.jpg') ? 0.5 : 1;
+  }
+}
+
+document.querySelectorAll('input[type=file]').forEach(inp => inp.onchange = () => {
+  const files = [...inp.files];
+  if (!files.length) return;
+  const fd = new FormData();
+  files.forEach(f => fd.append('images', f));
+  if (inp.dataset.wish) fd.append('wish', inp.dataset.wish);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', URL_UP);
+  xhr.upload.onprogress = e => { if (e.lengthComputable) show(`Uploading … ${Math.round(100 * e.loaded / e.total)} %`); };
+  xhr.onload = async () => {
+    let r = {};
+    try { r = JSON.parse(xhr.responseText); } catch (e) { show('<span class="error">Unexpected answer from the trainer.</span>'); return; }
+    if (r.errors && r.errors.length) show('<span class="error">' + r.errors.join('<br>') + '</span>');
+    else show(`<span class="ok">✔ saved: ${r.names.join(', ')}</span>`);
+    inp.value = '';
+    await list();
+    // show the check result of the newest photo
+    const l = await (await fetch(URL_LIST)).json();
+    const fresh = l.photos.filter(f => r.names && r.names.includes(f.name));
+    const hints = fresh.flatMap(f => f.check.hints || []);
+    if (hints.length) show(st.innerHTML + '<br><span class="warn">⚠ ' + hints.join('<br>⚠ ') + '</span>');
+  };
+  xhr.onerror = () => show('<span class="error">No connection to the trainer. Is it still running? Same Wi-Fi?</span>');
+  xhr.send(fd);
+});
+list();
+</script>
+</body>
+</html>

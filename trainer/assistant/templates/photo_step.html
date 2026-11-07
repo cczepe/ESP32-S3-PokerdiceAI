@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}{{ s.title }}{% endblock %}
+{% block content %}
+<h1>{{ s.nr }} · {{ s.title }}</h1>
+{% include "_camera.html" %}
+
+<details class="card" {% if not photo_list %}open{% endif %}>
+<summary>Guide: what to do, and why?</summary>
+<div style="margin-top:8px">
+{% block guide %}
+{% if step_id == '5_tray' %}
+<div class="twocol"><div>
+<p><b>What for?</b> The dice tray is rebuilt in Blender: diameter and wall height determine the shape, the photos show colour and
+material of the wall. So the virtual tray looks like yours, and the dice lean against the wall in the same way.</p>
+<ol>
+  <li>Enter the <b>sizes</b> below: diameter of the felt area inside, wall height from the felt to the top edge.</li>
+  <li><b>Photo “from above”</b>: whole tray, phone level and straight above it.</li>
+  <li><b>Photo “from the side”</b>: phone at tray height or slightly above, so that height and surface of the <b>wall</b>
+    (glossy/matt, plastic/wood) are clearly visible. The felt need not be visible. The photo is for reference;
+    more important is the <b>wall height</b> - measure it with a ruler and enter it below (it sets the height of the wall in Blender).</li>
+</ol>
+</div><div>
+<p><b>Pay attention to:</b> no dice in the tray, even daylight, no flash, no zoom. Leave some margin around the tray.</p>
+<p><b>Typical mistakes:</b> at an angle from above instead of straight (then the tray is oval), flash makes glossy spots.</p>
+<svg viewBox="0 0 260 110" width="260" style="background:#fafafa;border:1px solid #ddd;border-radius:6px">
+  <ellipse cx="70" cy="55" rx="45" ry="45" fill="#2f6b4a" stroke="#555" stroke-width="5"/><text x="70" y="105" font-size="11" text-anchor="middle">from above</text>
+  <rect x="150" y="60" width="95" height="16" fill="#555"/><rect x="157" y="62" width="81" height="8" fill="#2f6b4a"/>
+  <text x="197" y="105" font-size="11" text-anchor="middle">from the side</text>
+  <line x1="248" y1="60" x2="248" y2="76" stroke="#c00"/><text x="252" y="72" font-size="9" fill="#c00">wall</text>
+</svg>
+</div></div>
+{% elif step_id == '6_felt' %}
+<p><b>What for?</b> The close-up is laid onto the tray in Blender as a <b>texture</b>, so the virtual felt has the same colour and structure.</p>
+<ol>
+  <li>Hold the phone about 20-30 cm above the felt, <b>straight</b> from above, only felt in the picture (no wall, no dice).</li>
+  <li>Even daylight, no shadows of hand or phone, no flash.</li>
+  <li>1 photo is enough, up to 5 are possible (e.g. in different light).</li>
+</ol>
+<p><b>Typical mistakes:</b> own shadow in the picture, flash spot in the middle, tray wall in the picture.</p>
+{% elif step_id == '7_surroundings' %}
+<p><b>What for?</b> Behind and next to the tray the camera sees your table and room while playing. These photos go into Blender as the
+<b>background</b> behind the virtual tray. So the detector learns that table, hands, cups etc. are no dice.</p>
+<ol>
+  <li><b>10-20 photos</b> of where you play: table top, table edge, room in the background, from different directions.</li>
+  <li>Everyday things are welcome: glasses, phone, paper, hands, a bit of mess too.</li>
+  <li>Different light is good (daylight, lamp in the evening).</li>
+</ol>
+<p><b>Pay attention to:</b> no dice and no dice tray in these photos (it would confuse the training). Photos of people only if they agree.</p>
+{% endif %}
+{% endblock %}
+</div>
+</details>
+
+{% block before_photos %}
+{% if step_id == '5_tray' %}
+<h2>Sizes</h2>
+<div class="card">
+<form method="post" action="{{ url_for('tray_size', folder=folder) }}">
+  <label class="row"><span>Diameter of the felt area (mm)</span>
+    <input type="number" name="diameter_mm" min="50" max="1000" step="1" value="{{ p.tray.diameter_mm or '' }}" style="width:90px">
+    <span class="small">measured inside, from wall to wall (same field as in step 1)</span></label>
+  <label class="row"><span>Wall height (mm)</span>
+    <input type="number" name="wall_height_mm" min="0" max="200" step="1" value="{{ p.tray.wall_height_mm or '' }}" style="width:90px">
+    <span class="small">from the felt to the top edge of the wall</span></label>
+  <button class="second" type="submit">Save</button>
+</form>
+</div>
+{% endif %}
+{% endblock %}
+
+<h2>Photos ({{ photo_list|length }}{% if cfg.min == cfg.max %} of {{ cfg.max }}{% else %}, at least {{ cfg.min }}{% endif %})</h2>
+<div class="card">
+  <div class="qrbox">
+    <div class="qr"><img src="{{ url_for('qr', folder=folder, step=step_id) }}" alt="QR code" style="width:100%"></div>
+    <div>
+      <p style="margin-top:0"><b>📱 Take photos with the phone:</b> scan the QR code with the phone camera (phone in the same Wi-Fi).
+      A capture page opens - every photo lands here right away.</p>
+      <p class="small">Address: <code>{{ phone_url }}</code></p>
+      {% if local %}<div class="warning">The trainer runs with <code>--local-only</code> - the phone cannot reach it like this. Start it without this option.</div>{% endif %}
+      <p class="small">Does not work? Windows firewall: “Allow access” at the first start (private network). Phone and computer must be in the same Wi-Fi.</p>
+      <p><button class="second mini" onclick="location.reload()">⟳ show new photos</button>
+      <label class="second mini btn" style="cursor:pointer">… or choose a file on the computer
+        <input type="file" id="file" accept="image/jpeg,image/png" multiple style="display:none"></label>
+      {% if cfg.names %}<select id="wish" class="mini">{% for n in cfg.names %}<option value="{{ n }}">{{ {'top':'Tray from above','side':'Tray from the side'}[n] }}</option>{% endfor %}</select>{% endif %}
+      <span id="upl" class="small"></span></p>
+    </div>
+  </div>
+</div>
+
+{% if photo_list %}
+<div class="photogrid">
+{% for f in photo_list %}
+  <div class="photocard" id="{{ f.name }}">
+    <div style="display:flex;justify-content:space-between"><b>{{ f.title }}</b>
+      <a href="#" class="delete" data-name="{{ f.name }}" style="color:#c0392b">🗑 delete</a></div>
+    {% block photo scoped %}
+    <a href="{{ url_for('photo_image', folder=folder, step=step_id, name=f.name, kind='original') }}" target="_blank">
+      <img src="{{ url_for('photo_image', folder=folder, step=step_id, name=f.name, g=500) }}" loading="lazy"></a>
+    {% endblock %}
+    <div class="small" style="margin-top:4px">
+      {% if f.check.width %}{{ f.check.width }}×{{ f.check.height }} · sharpness {{ f.check.sharpness|round|int }} · brightness {{ f.check.brightness_percent|round|int }} %{% endif %}
+      {% if f.check.ok %}<span class="ok"> ✔</span>{% endif %}
+      {% for h in f.check.hints %}<br><span class="tight">⚠ {{ h }}</span>{% endfor %}
+    </div>
+  </div>
+{% endfor %}
+</div>
+{% else %}
+<p class="small">No photos yet.</p>
+{% endif %}
+<p class="small">Saved in <code>{{ folder_path }}</code></p>
+
+{% block after_photos %}{% endblock %}
+
+<p style="margin-top:18px">Status of this step: <b>{{ {'open':'open','in_progress':'in progress','done':'done ✔'}[p.steps[step_id].status] }}</b>
+  <span class="small">(becomes “done” automatically as soon as everything is there)</span></p>
+{% endblock %}
+
+{% block script %}
+<script>
+const URL_UP = "{{ url_for('photo_upload', folder=folder, step=step_id) }}";
+const URL_DEL = "{{ url_for('photo_delete', folder=folder, step=step_id, name='XXXX') }}";
+document.getElementById('file').onchange = async ev => {
+  const fd = new FormData();
+  for (const f of ev.target.files) fd.append('images', f);
+  const w = document.getElementById('wish'); if (w) fd.append('wish', w.value);
+  document.getElementById('upl').textContent = 'uploading …';
+  const r = await (await fetch(URL_UP, {method: 'POST', body: fd})).json();
+  if (r.errors && r.errors.length) alert(r.errors.join('\n'));
+  location.reload();
+};
+document.querySelectorAll('a.delete').forEach(a => a.onclick = async ev => {
+  ev.preventDefault();
+  if (!confirm(`Delete photo ${a.dataset.name} for good?\n\nThis cannot be undone.`)) return;
+  await postJSON(URL_DEL.replace('XXXX', a.dataset.name));
+  location.reload();
+});
+</script>
+{% block script2 %}{% endblock %}
+{% endblock %}

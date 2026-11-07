@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Trainer{% endblock %} · Pokerdice</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <a class="title" href="{{ url_for('index') }}">🎲 Pokerdice Trainer</a>
+  {% if p %}<span class="proj">Project: <b>{{ p.name }}</b></span>{% endif %}
+  <span style="margin-left:auto;font-size:.85em;opacity:.8">Version {{ VERSION }}</span>
+</header>
+<div class="frame">
+<nav>
+  <h4>General</h4>
+  <a href="{{ url_for('index') }}" class="{{ 'active' if active=='index' }}"><span class="tick">⌂</span>Projects</a>
+  {% set setup_ok = api_key_present and sett.device_address %}
+  <a href="{{ (url_for('setup', back=folder) if folder else url_for('setup')) }}" class="{{ 'active' if active=='setup' }}">
+    <span class="tick {{ 'done' if setup_ok else 'open' }}">{{ '✔' if setup_ok else '○' }}</span>0 · Setup</a>
+  {% if p %}
+  <h4>Project {{ p.name }}</h4>
+  <a href="{{ url_for('project', folder=folder) }}" class="{{ 'active' if active=='overview' }}"><span class="tick">☰</span>Overview</a>
+  {% for s in STEPS %}
+    {% set st = p.steps[s.id].status %}
+    <a href="{{ url_for('step', folder=folder, nr=s.nr) }}" class="{{ 'active' if active==s.id }}">
+      <span class="tick {{ st }}">{{ '✔' if st=='done' else ('◐' if st=='in_progress' else '○') }}</span>{{ s.nr }} · {{ s.title }}
+      <span style="margin-left:auto;font-size:.9em" title="{{ CAMERA_TEXT[CAMERA[s.id]][1] }}">{{ CAMERA_TEXT[CAMERA[s.id]][0] if CAMERA[s.id] != 'none' else '' }}</span></a>
+  {% endfor %}
+  <a href="{{ url_for('colab_page', folder=folder) }}" class="{{ 'active' if active=='colab' }}"><span class="tick">☁</span>Ready for Colab?</a>
+  <a href="{{ url_for('deploy_page', folder=folder) }}" class="{{ 'active' if active=='deploy' }}"><span class="tick">⚙</span>Training &amp; device</a>
+  {% endif %}
+  <h4>Guides</h4>
+  <a href="{{ url_for('guide', name='setup') }}" class="{{ 'active' if active=='guide_setup' }}"><span class="tick">🐍</span>Python environment</a>
+  <a href="{{ url_for('guide', name='firmware') }}" class="{{ 'active' if active=='guide_firmware' }}"><span class="tick">📷</span>Camera board firmware</a>
+</nav>
+<main>
+{% block content %}{% endblock %}
+</main>
+</div>
+<script src="{{ url_for('static', filename='help.js') }}"></script>
+{% block script %}{% endblock %}
+</body>
+</html>

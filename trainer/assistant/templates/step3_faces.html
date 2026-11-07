@@ -1,0 +1,168 @@
+{% extends "photo_step.html" %}
+
+{% block guide %}
+<div class="twocol"><div>
+<p><b>What for?</b> These 6 photos become the <b>textures</b> of the 3D die in Blender: each face exactly as it looks on your die.
+Here you also define the <b>symbols</b> (name, kind, colour). This gives the class list the model learns.</p>
+<ol>
+  <li>Put the die on the <b>green felt</b> (or a dark, matt surface) - not on white paper, it can hardly be told apart from the die. <b>Ruler</b> optional.</li>
+  <li>Phone <b>straight</b> above it, 30-40 cm, <b>2× zoom</b>, tap on the die; no flash.</li>
+  <li>One photo per face: turn the die so that the next face is on top. <b>6 photos</b> in total.</li>
+  <li>Check here: the trainer marks the die (yellow box). If the box is wrong, <b>drag a new one</b>:
+     with the mouse from one corner of the die to the opposite one.</li>
+  <li>Click “🤖 Suggest symbols”, check and correct the suggestions, then <b>“Confirm symbols”</b>.</li>
+</ol>
+</div><div>
+<p><b>Pay attention to:</b></p>
+<ul>
+  <li>Sharp and bright - the photos are the template for all training images.</li>
+  <li>No shadow of hand or phone on the die, no reflection.</li>
+  <li>Do not put the die at the image border, do not let the ruler touch it.</li>
+  <li>The rotation of the symbol on the photo does not matter - you set it in step 4 in the die net.</li>
+</ul>
+<p><b>Typical mistakes:</b> photographed at an angle (the die looks like a trapezoid), flash (glossy spot), zoom (blurred).</p>
+</div></div>
+{% endblock %}
+
+{% block photo %}
+{% set z = sym.face_crops.get(f.name) %}
+<div class="crop-box" style="position:relative;user-select:none" data-name="{{ f.name }}"
+     data-w="{{ f.check.width }}" data-h="{{ f.check.height }}"
+     {% if z %}data-x="{{ z.x }}" data-y="{{ z.y }}" data-s="{{ z.s }}"{% endif %}>
+  <img src="{{ url_for('photo_image', folder=folder, step=step_id, name=f.name, g=500) }}" draggable="false" style="cursor:crosshair">
+</div>
+<div class="small">
+  {% if z %}Die marked {{ 'automatically' if z.auto else 'by hand' }}{% if z.px_per_mm %} · {{ z.px_per_mm }} px/mm{% endif %}
+  {% else %}<span class="tight">Die not found - please drag a box.</span>{% endif %}
+  · <a href="#" class="detect_again" data-name="{{ f.name }}" title="Look for the die on this photo again (also replaces a box set by hand)">↻ detect again</a>
+</div>
+{% endblock %}
+
+{% block before_photos %}
+{% if photo_list %}
+<p>
+  <button class="second" id="all_detect_again">↻ detect all again automatically</button>
+  <label class="small"><input type="checkbox" id="also_hand"> also replace boxes set by hand</label>
+  <span id="again_status" class="small"></span>
+</p>
+{% endif %}
+{% endblock %}
+
+{% block after_photos %}
+<h2>Symbols</h2>
+<div class="card">
+{% if photo_list|length < 6 %}
+  <p>First take all 6 face photos ({{ photo_list|length }} of 6).</p>
+{% else %}
+  {% set faces_by_photo = {} %}
+  {% for e in sym.faces %}{% set _ = faces_by_photo.update({e.photo: e}) %}{% endfor %}
+  {% set suggestion = {} %}
+  {% for e in (sym.suggestion.faces if sym.suggestion else []) %}{% set _ = suggestion.update({e.photo: e}) %}{% endfor %}
+  <p style="margin-top:0">
+    <button id="faces_ai" {{ '' if api_key_present else 'disabled title="No API key"' }}>🤖 Suggest symbols</button>
+    <span id="faces_ai_status" class="small">Claude sees the 6 cropped faces and suggests name, kind, colour and position.</span>
+  </p>
+  {% if sym.suggestion and sym.suggestion.remark %}<p class="small">Claude: {{ sym.suggestion.remark }}</p>{% endif %}
+  <table id="symboltable">
+    <tr><th>Face</th><th>Name (class)</th><th>Kind</th><th>Colour</th><th>Position</th><th>Description</th></tr>
+    {% for f in photo_list %}
+    {% set e = faces_by_photo.get(f.name) or suggestion.get(f.name) or {} %}
+    {% set k = suggestion.get(f.name) or {} %}
+    <tr data-photo="{{ f.name }}">
+      <td>{% if sym.face_crops.get(f.name) %}<img src="{{ url_for('photo_image', folder=folder, step=step_id, name=f.name, kind='face_crop', g=96) }}" width="64" height="64" style="border-radius:4px">{% endif %}
+        <div class="small">{{ f.name }}</div></td>
+      <td><input type="text" class="s_name" value="{{ e.name or e.short_name or '' }}" size="5" maxlength="12" placeholder="e.g. K">
+        {% if k.short_name and not faces_by_photo.get(f.name) %}<div class="small">AI: {{ k.short_name }}</div>{% endif %}</td>
+      <td><select class="s_kind">{% for a in kinds %}<option {{ 'selected' if (e.kind or '')==a }}>{{ a }}</option>{% endfor %}</select></td>
+      <td><input type="text" class="s_color" value="{{ e.color or '' }}" size="10" placeholder="e.g. red"></td>
+      <td><input type="text" class="s_position" value="{{ e.position or '' }}" size="14" placeholder="e.g. centred"></td>
+      <td><input type="text" class="s_descr" value="{{ e.description or '' }}" size="28"></td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="small">Keep the names short. Usual are <b>9, 10, J, Q, K, A</b> (then this order is used automatically).
+  “?” is reserved for unclear dice and is added automatically as the last class.</p>
+  {% if sym.frozen %}<div class="warning">The class list is frozen (rendering has started) - changes are no longer possible.</div>{% endif %}
+  <p><button id="faces_ok" {{ 'disabled' if sym.frozen }}>✔ Confirm symbols</button> <span id="faces_ok_status"></span></p>
+  {% if sym.confirmed %}
+  <div class="note">Confirmed on {{ (sym.confirmed_at or '')|replace('T',' ') }}. <b>Class list:</b>
+    {% for k in sym.classes %}<code>{{ loop.index0 }}={{ k }}</code>{{ ', ' if not loop.last }}{% endfor %}
+    <br><span class="small">This order is frozen at the first rendering and never changed afterwards (it is “burnt into” the model).</span></div>
+  {% endif %}
+{% endif %}
+</div>
+{% endblock %}
+
+{% block script2 %}
+<script>
+const URL_CROP = "{{ url_for('faces_face_crop', folder=folder) }}";
+// show the crop box and drag a new one
+document.querySelectorAll('.crop-box').forEach(box => {
+  const img = box.querySelector('img');
+  const W = +box.dataset.w, H = +box.dataset.h;
+  const frame = document.createElement('div');
+  frame.style.cssText = 'position:absolute;border:2px solid #ffd400;box-shadow:0 0 0 1px #000;pointer-events:none;display:none';
+  box.appendChild(frame);
+  function draw(x, y, s) {   // original pixels -> display
+    const f = img.clientWidth / W;
+    Object.assign(frame.style, {display: 'block', left: x * f + 'px', top: y * f + 'px', width: s * f + 'px', height: s * f + 'px'});
+  }
+  const init = () => { if (box.dataset.s) draw(+box.dataset.x, +box.dataset.y, +box.dataset.s); };
+  img.complete ? init() : img.addEventListener('load', init);
+  window.addEventListener('resize', init);
+  let start = null;
+  const point = ev => { const r = img.getBoundingClientRect(); return {x: (ev.clientX - r.left) * W / r.width, y: (ev.clientY - r.top) * H / r.height}; };
+  img.addEventListener('mousedown', ev => { ev.preventDefault(); start = point(ev); });
+  img.addEventListener('mousemove', ev => {
+    if (!start) return;
+    const p = point(ev), s = Math.max(Math.abs(p.x - start.x), Math.abs(p.y - start.y));
+    draw(p.x < start.x ? start.x - s : start.x, p.y < start.y ? start.y - s : start.y, s);
+  });
+  const end = async ev => {
+    if (!start) return;
+    const p = point(ev), s = Math.max(Math.abs(p.x - start.x), Math.abs(p.y - start.y)), st = start;
+    start = null;
+    if (s < 20) { init(); return; }
+    const r = await postJSON(URL_CROP, {photo: box.dataset.name, x: p.x < st.x ? st.x - s : st.x, y: p.y < st.y ? st.y - s : st.y, s: s});
+    if (r.ok) location.reload(); else alert(r.error);
+  };
+  img.addEventListener('mouseup', end);
+  img.addEventListener('mouseleave', ev => { if (start) end(ev); });
+});
+
+// start the automatic detection again
+const URL_AGAIN = "{{ url_for('faces_detect_again', folder=folder) }}";
+async function detectAgain(photo, alsoHand) {
+  const st = document.getElementById('again_status');
+  if (st) st.textContent = 'looking for the die …';
+  const r = await postJSON(URL_AGAIN, {photo: photo, also_hand: alsoHand});
+  if (!r.ok) { alert(r.error || 'Error'); return; }
+  const parts = [];
+  if (r.not_found.length) parts.push('not found: ' + r.not_found.join(', ') + ' - please drag the box by hand');
+  if (r.skipped.length) parts.push('marked by hand, not changed: ' + r.skipped.join(', '));
+  if (parts.length) alert(parts.join('\n'));
+  location.reload();
+}
+document.querySelectorAll('.detect_again').forEach(a => a.onclick = ev => { ev.preventDefault(); detectAgain(a.dataset.name, true); });
+const allAgain = document.getElementById('all_detect_again');
+if (allAgain) allAgain.onclick = () => detectAgain('', document.getElementById('also_hand').checked);
+
+const aiB = document.getElementById('faces_ai');
+if (aiB) aiB.onclick = async () => {
+  aiB.disabled = true;
+  document.getElementById('faces_ai_status').textContent = 'asking Claude … (about 10-30 s)';
+  const r = await postJSON("{{ url_for('faces_ai', folder=folder) }}");
+  if (r.ok) location.reload();
+  else { aiB.disabled = false; document.getElementById('faces_ai_status').innerHTML = '<span class="bad">' + r.error + '</span>'; }
+};
+const okB = document.getElementById('faces_ok');
+if (okB) okB.onclick = async () => {
+  const faces = [...document.querySelectorAll('#symboltable tr[data-photo]')].map(tr => ({
+    photo: tr.dataset.photo, name: tr.querySelector('.s_name').value.trim(), kind: tr.querySelector('.s_kind').value,
+    color: tr.querySelector('.s_color').value, position: tr.querySelector('.s_position').value, description: tr.querySelector('.s_descr').value}));
+  const r = await postJSON("{{ url_for('faces_save', folder=folder) }}", {faces});
+  document.getElementById('faces_ok_status').innerHTML = r.ok ? '<span class="ok">✔ confirmed</span>' : '<span class="bad">' + r.error + '</span>';
+  if (r.ok) setTimeout(() => location.reload(), 700);
+};
+</script>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Camera board firmware{% endblock %}
+{% block content %}
+<h1>Firmware for the camera board</h1>
+<p>The firmware in <code>{{ REPO|path('firmware') }}</code> turns an ESP32-S3 camera board into a Wi-Fi camera: live view and single images
+from 640×480 up to 1600×1200, with auto or fixed exposure. The trainer fetches its images directly from the board.
+Once models are copied into <code>firmware/models</code>, the same firmware recognises the dice.</p>
+
+<h2>1. Build and flash</h2>
+<p>You need ESP-IDF (version 6.1 or newer), e.g. through the ESP-IDF extension of VS Code.
+<b>In VS Code:</b> open the folder <code>firmware</code> → in the status bar choose target <b>esp32s3</b> and the serial port of the board
+→ flame icon (build + flash + monitor).</p>
+<p><b>Or in the ESP-IDF terminal:</b></p>
+<pre class="cmd">cd "{{ REPO|path('firmware') }}"
+idf.py set-target esp32s3
+idf.py build flash monitor</pre>
+<ul>
+  <li>The <b>first</b> build downloads the camera component and takes a few minutes.</li>
+  <li><code>set-target</code> is only needed the first time.</li>
+  <li>If several serial ports exist, add <code>-p &lt;port&gt;</code> (e.g. <code>-p COMx</code> on Windows or <code>-p /dev/ttyACM0</code> on Linux).</li>
+  <li>Quit the monitor: <b>Ctrl+]</b></li>
+</ul>
+
+<h2>2. Set up the Wi-Fi (once)</h2>
+<ol>
+  <li>Without saved Wi-Fi the board opens its own hotspot <b>Pokerdice</b> (password <code>pokerdice</code>, see <code>firmware/main/wifi_config.h</code>). The LED is blue.</li>
+  <li>Connect your phone or laptop to <b>Pokerdice</b>. Most phones open the page by themselves, otherwise open <b>http://192.168.4.1</b>.</li>
+  <li>Tab <b>Wi-Fi</b> → choose your home Wi-Fi, enter the password → save. The board restarts.</li>
+  <li>The LED blinks yellow while connecting and turns green when connected. The page is then at <b>http://pokerdice.local</b>
+      (or at the IP shown in the serial log or your router).</li>
+  <li>Enter the address in <a href="{{ url_for('setup') }}">Step 0 · Setup</a> → “Test camera board”.</li>
+</ol>
+<p class="small">The Wi-Fi credentials are stored only on the board (NVS), never in the code. Only 2.4 GHz networks work.
+If the home Wi-Fi is not reachable for 30 s, the board opens its hotspot as well (LED blue, blinking green) and keeps trying.
+To forget the home Wi-Fi, <b>hold the BOOT button for 5 s</b> (LED blinks white).</p>
+
+<h2>3. LED</h2>
+<table>
+<tr><th>LED</th><th>Meaning</th></tr>
+<tr><td>yellow blinking</td><td>connecting to the home Wi-Fi</td></tr>
+<tr><td>green</td><td>connected to the home Wi-Fi</td></tr>
+<tr><td>blue</td><td>own hotspot</td></tr>
+<tr><td>blue, blinking green</td><td>home Wi-Fi not reachable, hotspot on, still trying</td></tr>
+<tr><td>short white flash</td><td>new result (twice: straight or better) - can be switched off on the page, tab Settings</td></tr>
+<tr><td>red blinking</td><td>camera not found</td></tr>
+</table>
+<p class="small">If green and red look swapped on your board, set <code>LED_ORDER_RGB</code> in <code>firmware/main/boards/esp32s3_cam.h</code> to the other value.</p>
+
+<h2>4. Directly in the browser</h2>
+<p>At <code>http://pokerdice.local/</code> (in the hotspot <code>http://192.168.4.1</code>) the board has its own page:</p>
+<ul>
+  <li><b>Play</b> - the poker hand and the five symbols, the live image with boxes (orange = “?”) and <b>Save snapshot</b>
+      (camera image, detection as JSON and the image with the boxes).</li>
+  <li><b>History</b>, <b>Monitoring</b> (time per step, memory, self-test of the models), <b>Settings</b> (threshold, stability, LED).</li>
+  <li><b>Camera</b> - live view, single images, camera settings (JPEG quality, flip, brightness …).
+      Live view also at <code>http://pokerdice.local:81/stream</code>.</li>
+</ul>
+<p class="small">Without models in <code>firmware/models</code> the board is a camera only (the page shows “No models”).
+While the trainer (or the Camera tab) uses the camera, the detection waits and continues 5 s later on its own.</p>
+<table>
+<tr><th>Call</th><th>Meaning</th></tr>
+<tr><td><code>/api/info</code></td><td>firmware, sensor, resolutions, Wi-Fi, models (classes, self-test)</td></tr>
+<tr><td><code>/api/state</code></td><td>detection: status, dice, hand, history, times</td></tr>
+<tr><td><code>/api/frame</code></td><td>newest camera image of the detection; header <code>X-Detection</code> = boxes and symbols of this image</td></tr>
+<tr><td><code>/api/capture?res=1024x768</code></td><td>single image: 640x480, 800x600, 1024x768, 1280x1024 or 1600x1200</td></tr>
+<tr><td><code>/api/capture?exposure=-1</code></td><td>auto exposure with correction −2 (darker) … +2 (brighter)</td></tr>
+<tr><td><code>/api/capture?aec=300&amp;gain=0</code></td><td>fixed exposure time and gain 0…30 - the camera no longer adjusts</td></tr>
+</table>
+<p class="small">Without a value the last setting stays, also for the live view. The answer headers <code>X-Exposure</code> and
+<code>X-Resolution</code> tell what the sensor really used. Only <b>one</b> viewer can watch the live view at a time.</p>
+
+<h2>Common problems</h2>
+<table>
+<tr><th>What happens</th><th>Solution</th></tr>
+<tr><td>LED blinks red</td><td>Camera not found. Look for “camera” in the monitor. Often: ribbon cable not fully inserted.</td></tr>
+<tr><td>Image upside down</td><td>On the board's page switch “Flip vertically” / “Mirror” and save.</td></tr>
+<tr><td>pokerdice.local not found</td><td>Some networks/systems do not resolve .local names. Use the IP address instead.</td></tr>
+<tr><td>Page shows “No models”</td><td>Choose the project on the page “Training &amp; device” (models into <code>firmware/models</code>), then build and flash again.</td></tr>
+<tr><td>Self-test “MISMATCH”</td><td>The board computes the test image of the conversion slightly differently (often only rounding by 1 -
+the serial log shows the values). If the dice are still recognized, it is harmless; otherwise convert, build and flash again.</td></tr>
+<tr><td>Live view in the trainer black</td><td>Close the other page with the live view (only one viewer) and reload.</td></tr>
+</table>
+{% endblock %}

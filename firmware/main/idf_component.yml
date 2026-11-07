@@ -1,0 +1,7 @@
+## Components from the Espressif registry (downloaded by the component manager on the first build)
+dependencies:
+  idf: ">=6.0"
+  espressif/esp32-camera: "~2.1.8"
+  espressif/mdns: "^1.8"
+  espressif/esp-dl: "~3.3.14"
+  espressif/esp_new_jpeg: "^1"

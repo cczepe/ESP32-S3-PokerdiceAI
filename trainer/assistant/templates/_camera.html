@@ -1,0 +1,6 @@
+{# camera sign: which camera for this step (step_id must be set) #}
+{% set k = CAMERA_TEXT[CAMERA[step_id]] %}
+<div class="camera camera-{{ CAMERA[step_id] }}">
+  <span class="camera-icon">{{ k[0] }}</span>
+  <div><b>Camera: {{ k[1] }}</b><br><span class="small">{{ k[2] }}</span></div>
+</div>

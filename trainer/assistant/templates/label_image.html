@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Label {{ name }}{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+  <h1 style="margin:0">9 · Label <span class="small">{{ name }} ({{ nr }} of {{ total }})</span></h1>
+  <div>
+    <a class="btn second" href="{{ url_for('label_page', folder=folder) }}">☰ Overview</a>
+    {% if prev %}<a class="btn second" href="{{ url_for('label_image', folder=folder, name=prev) }}">← {{ prev }}</a>{% endif %}
+    {% if next %}<a class="btn second" href="{{ url_for('label_image', folder=folder, name=next) }}">{{ next }} →</a>{% endif %}
+  </div>
+</div>
+<p class="small" style="margin:4px 0 10px">Confirmed: <b>{{ st.confirmed }}</b> of {{ st.total }}
+  {% if st.ai_rate is not none %} · Claude was right {{ (st.ai_rate * 100)|round|int }} % so far{% endif %}
+  {% if info.confirmed %} · <span class="ok">this capture is confirmed ({{ info.confirmed.file }})</span>{% endif %}</p>
+
+{% if not classes %}
+<div class="warning">No class list - confirm step 3 first.</div>
+{% else %}
+<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+  <div style="width:720px;max-width:100%;flex-shrink:0">
+    <div id="imgframe" style="position:relative;width:720px;max-width:100%;user-select:none">
+      <img id="mainimg" src="{{ url_for('raw_image', folder=folder, name=name) }}" draggable="false" style="width:100%;display:block;border-radius:6px;cursor:crosshair">
+    </div>
+    <p class="small">Draw a new die: drag a box in the image. Click a box = select it.</p>
+    {% if suggestion.source == 'model' %}<p class="small">🧠 Suggestions from your own models (version {{ suggestion.model_version }}).
+      <b>Check every die yourself</b> - these captures are the honest test of the models; suggestions taken over unchecked
+      would “confirm” their own errors.</p>{% endif %}
+    {% for h in suggestion.notes or [] %}<div class="small">⚠ {{ h }}</div>{% endfor %}
+    {% if suggestion.ai %}
+    <p class="small">🤖 Claude counts <b>{{ suggestion.ai.dice_in_image }}</b> dice in the image.
+      {% if suggestion.ai.remark %}{{ suggestion.ai.remark }}{% endif %}</p>
+    {% else %}<p class="small">No AI suggestion for this capture - choose the symbols yourself (or create suggestions in the overview).</p>{% endif %}
+  </div>
+  <div style="flex:1;min-width:300px">
+    <div class="card" style="margin-top:0">
+      <b>Keys:</b>
+      {% for k in classes if k != '?' %}<code>{{ loop.index }}</code>={{ k }} {% endfor %}<code>0</code>=? <code>x</code>=no die
+      · <code>Tab</code> next · <code>Enter</code> confirm &amp; next
+    </div>
+    <div id="list"></div>
+    <div id="count_hint" class="small"></div>
+    <p>
+      <button id="ok" style="font-size:1.1em;padding:10px 22px">✔ Confirm &amp; next (Enter)</button>
+      <span id="ok_status"></span>
+    </p>
+    {% if features %}<details class="small"><summary>Features of the symbols</summary><pre style="white-space:pre-wrap">{{ features }}</pre></details>{% endif %}
+  </div>
+</div>
+<style>
+.dbox{position:absolute;border:2px solid #e33;box-sizing:border-box;cursor:pointer}
+.dbox.set{border-color:#2e8b57}
+.dbox.none{border:2px dashed #999}
+.dbox.active{border-color:#ffd400;box-shadow:0 0 0 2px #000}
+.dbox span{position:absolute;top:-17px;left:-2px;background:#000;color:#fff;font-size:11px;padding:0 4px;border-radius:3px;white-space:nowrap}
+.drow{display:flex;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px;margin-bottom:6px}
+.drow.active{outline:3px solid #ffd400}
+.drow canvas{width:96px;height:96px;border-radius:4px;background:#222;flex-shrink:0}
+.drow select{font-size:1.05em}
+</style>
+{% endif %}
+{% endblock %}
+
+{% block script %}
+{% if classes %}
+<script>
+const CLASSES = {{ classes|tojson }};
+const KEYS = {};
+CLASSES.filter(k => k !== '?').forEach((k, i) => KEYS[String(i + 1)] = k);
+KEYS['0'] = '?'; KEYS['x'] = 'none'; KEYS['X'] = 'none';
+let dice = {{ dice|tojson }};
+let active = dice.findIndex(w => !w.symbol);
+if (active < 0) active = dice.length ? 0 : -1;
+const img = document.getElementById('mainimg');
+const frameBox = document.getElementById('imgframe');
+
+function draw() {
+  frameBox.querySelectorAll('.dbox').forEach(e => e.remove());
+  const f = img.clientWidth / (img.naturalWidth || 640);
+  dice.forEach((w, i) => {
+    const d = document.createElement('div');
+    d.className = 'dbox' + (w.symbol === 'none' ? ' none' : (w.symbol ? ' set' : '')) + (i === active ? ' active' : '');
+    Object.assign(d.style, {left: w.x * f + 'px', top: w.y * f + 'px', width: w.w * f + 'px', height: w.h * f + 'px'});
+    d.innerHTML = `<span>${i + 1}${w.symbol && w.symbol !== 'none' ? ': ' + w.symbol : (w.symbol === 'none' ? ': –' : '')}</span>`;
+    d.onmousedown = ev => { ev.stopPropagation(); active = i; all(); };
+    frameBox.appendChild(d);
+  });
+  const n = dice.filter(w => w.symbol && w.symbol !== 'none').length;
+  const ai = {{ ((suggestion.ai or {}).get('dice_in_image'))|tojson }};
+  document.getElementById('count_hint').innerHTML = `${n} dice labelled` +
+    (ai !== null && ai !== n ? ` · <span class="tight">Claude counts ${ai} - is a die missing? Then draw it in the image.</span>` : '');
+}
+function list() {
+  const el = document.getElementById('list');
+  el.innerHTML = '';
+  dice.forEach((w, i) => {
+    const z = document.createElement('div');
+    z.className = 'drow' + (i === active ? ' active' : '');
+    const c = document.createElement('canvas'); c.width = 192; c.height = 192;
+    const s = Math.max(w.w, w.h) * 1.5, cx = w.x + w.w / 2, cy = w.y + w.h / 2;
+    const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(img, cx - s / 2, cy - s / 2, s, s, 0, 0, 192, 192);
+    const sel = document.createElement('select');
+    sel.innerHTML = '<option value="">– choose –</option>' + CLASSES.map(k => `<option value="${k}">${k === '?' ? '? (tilted / unclear)' : k}</option>`).join('') +
+                    '<option value="none">no die / several</option>';
+    sel.value = w.symbol || '';
+    sel.onchange = () => { w.symbol = sel.value; active = i; all(); };
+    sel.onfocus = () => { if (active !== i) { active = i; draw(); markRow(); } };
+    const info = document.createElement('div');
+    info.className = 'small';
+    info.innerHTML = `<b>${i + 1}</b> · ${w.w}×${w.h} px` +
+      (w.model_symbol ? `<br>🧠 Model: <b>${w.model_symbol}</b> (${Math.round(w.model_p * 100)} %)` +
+                        (w.model_unsure ? ' <span class="tight" title="model unsure - look closely">⚠ look closely</span>' : '') : '') +
+      (w.ai_symbol ? `<br>🤖 AI: <b>${w.ai_symbol}</b>${w.ai_sure === false ? ' (unsure)' : ''}` : '') +
+      (w.several ? '<br><span class="tight">probably several dice - draw them one by one</span>' : '') +
+      (w.source === 'hand' ? '<br>by hand' : '');
+    const box = document.createElement('div'); box.appendChild(sel); box.appendChild(info);
+    z.appendChild(c); z.appendChild(box);
+    z.onclick = ev => { if (ev.target.tagName !== 'SELECT') { active = i; all(); } };
+    el.appendChild(z);
+  });
+}
+function markRow() { document.querySelectorAll('.drow').forEach((z, i) => z.classList.toggle('active', i === active)); }
+function all() { draw(); list(); }
+
+// drag a new box
+let start = null, frame = null;
+const point = ev => { const r = img.getBoundingClientRect(); return {x: (ev.clientX - r.left) * (img.naturalWidth || 640) / r.width, y: (ev.clientY - r.top) * (img.naturalHeight || 480) / r.height}; };
+img.addEventListener('mousedown', ev => {
+  ev.preventDefault(); start = point(ev);
+  frame = document.createElement('div'); frame.className = 'dbox active'; frameBox.appendChild(frame);
+});
+window.addEventListener('mousemove', ev => {
+  if (!start) return;
+  const p = point(ev), f = img.clientWidth / (img.naturalWidth || 640);
+  Object.assign(frame.style, {left: Math.min(p.x, start.x) * f + 'px', top: Math.min(p.y, start.y) * f + 'px',
+                              width: Math.abs(p.x - start.x) * f + 'px', height: Math.abs(p.y - start.y) * f + 'px'});
+});
+window.addEventListener('mouseup', ev => {
+  if (!start) return;
+  const p = point(ev), s0 = start; start = null; frame.remove();
+  const w = Math.round(Math.abs(p.x - s0.x)), h = Math.round(Math.abs(p.y - s0.y));
+  if (w < 8 || h < 8) return;
+  dice.push({x: Math.round(Math.max(0, Math.min(p.x, s0.x))), y: Math.round(Math.max(0, Math.min(p.y, s0.y))), w, h, symbol: '', source: 'hand'});
+  active = dice.length - 1; all();
+});
+
+// keyboard
+document.addEventListener('keydown', ev => {
+  if (ev.target.tagName === 'INPUT') return;
+  if (ev.key === 'Enter') { ev.preventDefault(); confirmImage(); return; }
+  if (ev.key === 'Tab') { ev.preventDefault(); if (dice.length) { active = (active + (ev.shiftKey ? -1 : 1) + dice.length) % dice.length; all(); } return; }
+  if (KEYS[ev.key] !== undefined && active >= 0) {
+    ev.preventDefault();
+    dice[active].symbol = KEYS[ev.key];
+    const nxt = dice.findIndex((w, i) => i > active && !w.symbol);
+    if (nxt >= 0) active = nxt;
+    all();
+  }
+});
+
+async function confirmImage() {
+  const open = dice.map((w, i) => w.symbol ? null : i + 1).filter(x => x);
+  if (open.length) { document.getElementById('ok_status').innerHTML = `<span class="bad">Still without symbol: ${open.join(', ')}</span>`; return; }
+  const r = await postJSON("{{ url_for('label_confirm', folder=folder, name=name) }}", {dice});
+  if (!r.ok) { document.getElementById('ok_status').innerHTML = `<span class="bad">${r.error}</span>`; return; }
+  document.getElementById('ok_status').innerHTML = `<span class="ok">✔ ${r.file}</span>`;
+  {% if next_open %}location.href = "{{ url_for('label_image', folder=folder, name=next_open) }}";
+  {% else %}setTimeout(() => location.href = "{{ url_for('label_page', folder=folder) }}", 600);{% endif %}
+}
+document.getElementById('ok').onclick = confirmImage;
+img.complete ? all() : img.addEventListener('load', all);
+window.addEventListener('resize', draw);
+</script>
+{% endif %}
+{% endblock %}

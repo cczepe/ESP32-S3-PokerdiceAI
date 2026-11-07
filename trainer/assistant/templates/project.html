@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name }}{% endblock %}
+{% block content %}
+<h1>Project “{{ p.name }}”</h1>
+<p class="small">Folder: <code>{{ project_path }}</code> · created {{ p.created|replace('T',' ') }}
+{% if p.copied_from %} · copied from “{{ p.copied_from.project }}”: {{ p.copied_from.parts|join(', ') }}{% endif %}</p>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% set setup_ok = api_key_present and sett.device_address %}
+<div class="card">
+<table>
+  <tr><th style="width:40px"></th><th>Step</th><th>Phase</th><th>Status</th></tr>
+  <tr>
+    <td class="tick {{ 'done' if setup_ok else 'open' }}">{{ '✔' if setup_ok else '○' }}</td>
+    <td><a href="{{ url_for('setup', back=folder) }}">0 · Setup</a> <span class="small">(valid for all projects)</span></td>
+    <td>0</td>
+    <td>{{ 'done' if setup_ok else 'open' }}</td>
+  </tr>
+  {% for s in STEPS %}
+  {% set st = p.steps[s.id].status %}
+  <tr>
+    <td class="tick {{ st }}">{{ '✔' if st=='done' else ('◐' if st=='in_progress' else '○') }}</td>
+    <td><a href="{{ url_for('step', folder=folder, nr=s.nr) }}">{{ s.nr }} · {{ s.title }}</a></td>
+    <td>{{ s.phase }}</td>
+    <td>{{ {'open':'open','in_progress':'in progress','done':'done'}[st] }}</td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+
+{% if p.camera_setup %}
+<h2>Result of the camera setup</h2>
+<div class="card">
+  <p>Status: <span class="badge {{ p.camera_setup.status|replace(' ', '_') }}">{{ p.camera_setup.status }}</span>
+     · {{ p.camera_setup.images_used }} images, {{ p.camera_setup.dice_count }} dice · applied {{ p.camera_setup.applied|replace('T',' ') }}</p>
+  <ul>{% for e in p.camera_setup.recommendation %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div class="note"><b>What next?</b> Work through the steps in order (the camera is shown next to each: 📷 camera board, 📱 phone).
+When 1-7 are green: <a href="{{ url_for('colab_page', folder=folder) }}">Ready for Colab?</a> → create the Colab package.
+Steps 8-9 (capture and label real throws) need the class list from step 3 and are independent of “Ready for Colab?”.
+After rendering and training: <a href="{{ url_for('deploy_page', folder=folder) }}">Training &amp; device</a> (convert, firmware).</div>
+<h2>Delete project</h2>
+<div class="card" style="border-color:#e3b4ad">
+<form method="post" action="{{ url_for('project_delete', folder=folder) }}"
+      onsubmit="return confirm('Delete project “{{ p.name }}” with ALL photos and ratings for good?\n\nThis cannot be undone.')">
+  <p style="margin-top:0">Deletes the whole folder <code>{{ project_path }}</code> <b>for good</b> (not into the recycle bin).
+  To be safe, type in the project name <b>{{ p.name }}</b>:</p>
+  <input type="text" name="confirmation" autocomplete="off" placeholder="{{ p.name }}">
+  <button type="submit" style="background:#c0392b">Delete project for good</button>
+</form>
+</div>
+{% endblock %}

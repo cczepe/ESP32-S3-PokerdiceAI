@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Training & device{% endblock %}
+{% block content %}
+<h1>Training &amp; device</h1>
+<p>From the renders to the finished recognition on the camera board. The trainer only shows the state and the commands here -
+they run in <b>Colab</b> (training) and in a <b>terminal</b> on the computer (converting, firmware).
+All commands assume that the terminal is in the repository folder:</p>
+<pre class="cmd">cd "{{ REPO_PATH }}"</pre>
+<p class="small">The commands are written for Windows PowerShell. On Linux/macOS use <code>.venv/bin/python</code> instead of
+<code>.venv\Scripts\python.exe</code> and <code>/</code> instead of <code>\</code>.</p>
+
+<div class="card">
+<table>
+  <tr><th style="width:40px"></th><th>Part</th><th>State</th></tr>
+  <tr><td class="tick {{ 'done' if export_ok else 'open' }}" style="font-size:1.2em">{{ '✔' if export_ok else '✘' }}</td>
+      <td>1 · Trained in Colab + export fetched</td>
+      <td>{{ export|selectattr('present')|list|length }} of {{ export|length }} files in <code>{{ r_export }}</code></td></tr>
+  <tr><td class="tick {{ 'done' if models_ok else 'open' }}" style="font-size:1.2em">{{ '✔' if models_ok else '✘' }}</td>
+      <td>2 · Converted for the camera board (.espdl)</td>
+      <td>{% for m in models if m.name.endswith('.espdl') %}{{ m.name }}: {% if m.present %}<span class="ok">{{ m.kb }} KB</span>{% else %}–{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</td></tr>
+  <tr><td class="tick {{ 'done' if fw_ok else 'open' }}" style="font-size:1.2em">{{ '✔' if fw_ok else '✘' }}</td>
+      <td>3 · Firmware builds this project</td>
+      <td>{% if fw_ok %}<span class="ok">ready to build</span> (models in firmware/models from {{ fw[2].time }})
+          {% elif fw_other %}<span class="tight">firmware/models holds other models (another project or an older version)</span>
+          {% else %}not yet{% endif %}</td></tr>
+</table>
+</div>
+
+{% if det_report or cls_report %}
+<h2>Results of the conversion</h2>
+<div class="card">
+<p style="margin-top:0" class="small">The same test images, once with the original model on the PC (float) and once the way the ESP32 computes (int8).
+The two columns should be close to each other. What matters are the <b>real</b> images; “synthetic” = renders.</p>
+<table>
+<tr><th>Model</th><th>Test images</th><th>PC (float)</th><th>ESP32 (int8)</th></tr>
+{% if det_report %}{% for kind in ('real', 'synthetic') if det_report.get(kind) %}
+<tr><td>Detector ({{ det_report.kb }} KB{{ ', TQT' if det_report.tqt }})</td><td>{{ kind }}</td>
+    <td>recall {{ '%.3f'|format(det_report[kind].pc_float.recall) }} · precision {{ '%.3f'|format(det_report[kind].pc_float.precision) }}</td>
+    <td>recall {{ '%.3f'|format(det_report[kind].esp32_int8.recall) }} · precision {{ '%.3f'|format(det_report[kind].esp32_int8.precision) }}</td></tr>
+{% endfor %}{% endif %}
+{% if cls_report %}{% for kind in ('real', 'synthetic') if cls_report.get(kind) %}
+<tr><td>Classifier ({{ cls_report.kb }} KB, {{ cls_report.quant }})</td><td>{{ kind }}</td>
+    <td>per die {{ '%.1f'|format(cls_report[kind].pc_float.per_die * 100) }} % · per throw {{ '%.1f'|format(cls_report[kind].pc_float.per_throw * 100) }} %</td>
+    <td>per die {{ '%.1f'|format(cls_report[kind].esp32_int8.per_die * 100) }} % · per throw {{ '%.1f'|format(cls_report[kind].esp32_int8.per_throw * 100) }} %</td></tr>
+{% endfor %}{% endif %}
+</table>
+</div>
+{% endif %}
+
+<h2>1 · Training in Colab</h2>
+<p>The notebooks came to Drive with the Colab package (<code>{{ drive }}/notebooks/</code>). If the package is older than this
+version of the trainer: create a new package on <a href="{{ url_for('colab_page', folder=folder) }}">Ready for Colab?</a> and upload it to
+<code>{{ drive }}/packages</code> - renders are kept.</p>
+<ol>
+  <li><b>2_render</b> - renders the training images (one run with a mix of normal throws, dice kept at the wall and tilted dice).</li>
+  <li><b>3_detector</b> - finds the dice. The first time from scratch, later optionally from the previous run (<code>START_FROM</code>).</li>
+  <li><b>4_classifier</b> - recognises the symbol.</li>
+  <li>Or <b>5_all_in_one</b> - 2, 3 and 4 in one session (e.g. overnight), after notebook 1.</li>
+</ol>
+<p>The detector and the classifier write their result to <code>{{ drive }}/projects/{{ folder }}/export/</code> at the end.</p>
+
+<h3>Fetch the export to the computer</h3>
+<p>In <a href="https://drive.google.com" target="_blank">Google Drive</a>: <i>My Drive → {{ drive }} → projects → {{ folder }}</i>,
+right click on <b>export</b> → <b>Download</b>. Drive packs the folder as a ZIP into your downloads. Then in PowerShell
+(an existing <code>export</code> folder is renamed first, nothing is overwritten):</p>
+<pre class="cmd">if (Test-Path "{{ r_export }}") { Rename-Item "{{ r_export }}" ("export_backup_" + (Get-Date -Format yyyyMMdd_HHmmss)) }
+$zip = Get-ChildItem "$env:USERPROFILE\Downloads\export-*.zip" | Sort-Object LastWriteTime | Select-Object -Last 1
+Expand-Archive -Path $zip.FullName -DestinationPath "{{ r_project }}"
+dir "{{ r_export }}"</pre>
+<p class="small">If Drive splits large folders into several ZIPs (<code>…-001.zip</code>, <code>…-002.zip</code>), unpack all of them one after the
+other with <code>Expand-Archive</code> into the same target.</p>
+<table>
+<tr><th>File</th><th>State</th></tr>
+{% for x in export %}<tr><td><code>{{ x.name }}</code></td><td>{% if x.present %}<span class="ok">✔</span> {{ x.kb }} KB · {{ x.time }}{% else %}<span class="small">missing</span>{% endif %}</td></tr>{% endfor %}
+</table>
+
+<h2>2 · Convert for the camera board (on the computer)</h2>
+<p>Needs the packages from <code>trainer/requirements.txt</code> (installed by the setup script: PyTorch CPU, esp-ppq, onnx, onnxruntime).</p>
+<h3>Detector</h3>
+<pre class="cmd">.venv\Scripts\python.exe trainer\convert\quantize_detector.py --export "{{ r_export }}" --dest "{{ r_models }}"</pre>
+<p class="small">{{ TQT_NOTE|safe }}</p>
+
+<h3>Classifier</h3>
+<pre class="cmd">.venv\Scripts\python.exe trainer\convert\quantize_classifier.py --export "{{ r_export }}" --dest "{{ r_models }}"</pre>
+<p class="small">If “ESP32 (int8)” is clearly worse than “PC (float)”: repeat with <code>--w8a16</code> (more exact, a little slower on the board).
+Older results are moved to <code>{{ r_models|path('backup_…') }}</code>.</p>
+
+<h3>Check with the real test images (optional)</h3>
+<pre class="cmd">.venv\Scripts\python.exe trainer\tools\evaluate_test_images.py --project "{{ r_project }}"</pre>
+<p class="small">Shows per test image what the detector and the classifier find, with drawn images in <code>{{ r_project|path('evaluation_…') }}</code>.</p>
+
+<h2>3 · Firmware</h2>
+<p>The firmware is in <code>{{ r_firmware }}</code> - the same code for all projects{% if not firmware_present %}
+(<span class="bad">folder missing</span>){% endif %}. Only the three files in
+<code>{{ r_models }}</code> are project specific; <code>select_project.py</code> writes <code>model_config.h</code> and copies all three to
+<code>{{ r_firmware|path('models') }}</code>. The project name appears nowhere in the firmware.</p>
+<h3>Copy the models into the firmware</h3>
+<pre class="cmd">.venv\Scripts\python.exe trainer\convert\select_project.py --project "{{ r_project }}"</pre>
+<p class="small">What was in <code>{{ r_firmware|path('models') }}</code> before moves to <code>{{ 'workspace'|path('firmware_models_backup/&lt;date_time&gt;')|safe }}</code>.
+Repeat after every new conversion. To use the models in another firmware too, add <code>--firmware &lt;folder&gt;</code>
+(several times possible) - see docs/use_models_in_your_firmware.md.</p>
+<table>
+{% for x in fw %}<tr><td><code>{{ r_firmware|path('models', x.name) }}</code></td><td>{% if x.present %}<span class="ok">✔</span> {{ x.kb }} KB · {{ x.time }}{% else %}<span class="small">missing</span>{% endif %}</td></tr>{% endfor %}
+</table>
+
+<h3>Build and flash</h3>
+<p>In VS Code (ESP-IDF extension) open the folder <code>{{ r_firmware }}</code>, target <b>esp32s3</b>, <b>Build</b>, <b>Flash</b>, <b>Monitor</b>.
+Or in the ESP-IDF terminal:</p>
+<pre class="cmd">cd "{{ r_firmware }}"
+idf.py set-target esp32s3
+idf.py build flash monitor</pre>
+<p class="small"><code>set-target</code> only the first time. If several serial ports exist, add <code>-p &lt;port&gt;</code>.
+When flashing, the models go into their own flash areas (<code>det</code>, <code>cls</code>). The board's settings and Wi-Fi stay.</p>
+<p>Then open <b>http://pokerdice.local</b> (or the board's IP address): the tab <b>Play</b> shows the hand, the live image
+with boxes and the symbols. Tab <b>Monitoring</b>: self-test of both models (“ok”) and the time per image.</p>
+<p class="small">Camera of this project (step 1): {{ camera.resolution }},
+{% if camera.fixed_exposure %}fixed exposure aec {{ camera.fixed_exposure.aec }}, gain {{ camera.fixed_exposure.gain }}{% else %}auto exposure {{ '%+d'|format(camera.exposure_level) if camera.exposure_level else '0' }}{% endif %}
+- written into <code>model_config.h</code>.</p>
+{% endblock %}

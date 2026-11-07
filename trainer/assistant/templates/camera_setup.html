@@ -1,0 +1,607 @@
+{% extends "base.html" %}
+{% block title %}Camera setup{% endblock %}
+{% block content %}
+<h1>1 · Camera setup <span class="small">(feasibility check)</span></h1>
+{% include "_camera.html" %}
+
+<details class="card" {% if not images %}open{% endif %}>
+<summary>Guide: what to do, and why?</summary>
+<div class="twocol" style="margin-top:8px">
+<div>
+<p><b>Goal:</b> find out whether the dice on images <b>of the camera board</b> are large enough to recognise the symbols.
+If you cannot read them reliably with your own eyes, no model can either. Then we first have to change distance or resolution
+before putting time into rendering and training.</p>
+<p><b>How it works:</b></p>
+<ol>
+  <li>Throw 5 dice into the tray.</li>
+  <li>Hold the camera board <b>the way you would hold it while playing</b> (or mount it where it will be later).</li>
+  <li>Look at the live view → “Capture”. Then throw the dice again, change the position slightly, capture again.</li>
+  <li>About <b>10 captures</b>: some close, some medium, flatter and steeper (but at least about 30° from above).</li>
+  <li>For each image, tell below the enlarged dice: <b>readable / unsure / not readable</b> - can you say which symbol is on top? Everything counts: colour, kind (pips or figure) and drawing.</li>
+  <li>Optional: “AI assessment” - Claude tells what it recognises (second opinion).</li>
+  <li>Check the summary at the bottom → “Apply”.</li>
+</ol>
+</div>
+<div>
+<p><b>Pay attention to:</b></p>
+<ul>
+  <li><b>With the camera board, not with the phone</b> - different lens, different field of view → the pixel sizes would be wrong.</li>
+  <li>The <b>whole tray</b> should be in the picture if possible (then the angle estimate is right).</li>
+  <li>Normal playing light, no flash, no extra lighting - it should be realistic.</li>
+  <li>Feel free to capture a few “bad” positions too: the limits are what is interesting.</li>
+</ul>
+<p><b>What the trainer measures</b> (without AI): felt = everything green, dice = bright, non-green spots on the felt.
+From the ellipse of the round tray it estimates the elevation (yellow line), with the tray diameter also the distance.
+The enlarged dice are <b>deliberately pixelated</b> - so you see the real resolution.</p>
+<p><b>Typical problems:</b> dice are not found → mode “Switch view”, click the image until “mask”: green = recognised as surface,
+red = dice. If the colour does not fit (other cloth, weak light): mode <b>“Pick surface colour”</b> and click once into the cloth.
+If two dice touch, they become one spot (orange) - then choose “no die / several” for that spot and drag the dice one by one in mode
+<b>“Draw dice”</b> (turquoise).</p>
+<p><b>Sharpness number:</b> the larger, the sharper. It has no fixed limit but is good for comparing: same scene, other light or
+other focus → if the number rises, it is better.</p>
+</div>
+</div>
+</details>
+
+<h2>Capture</h2>
+<div class="card">
+{% if stream %}
+<div class="live">
+  <div>
+    <img id="live" src="{{ stream }}" alt="Live view from the camera board" onerror="this.alt='No live view - board switched on? Same Wi-Fi? Address right?'">
+    <div class="small">Live view: {{ stream }} · <a href="#" onclick="document.getElementById('live').src='{{ stream }}?'+Date.now();return false">reconnect</a></div>
+  </div>
+  <div>
+    <p><button id="capture" style="font-size:1.15em;padding:12px 26px">📷 Capture</button>
+      <select id="res" title="Resolution of the capture" style="font-size:1.05em;padding:8px;margin-left:6px">
+        <option value="640x480">640 × 480</option>
+        <option value="800x600">800 × 600</option>
+        <option value="1024x768">1024 × 768</option>
+        <option value="1280x1024">1280 × 1024</option>
+        <option value="1600x1200">1600 × 1200</option>
+      </select></p>
+    <p>Exposure:
+      <select id="exp" title="Exposure of the capture" style="padding:6px">
+        <option value="-2">auto −2 (darker)</option>
+        <option value="-1">auto −1</option>
+        <option value="0" selected>auto 0</option>
+        <option value="1">auto +1</option>
+        <option value="2">auto +2 (brighter)</option>
+        <option value="fixed">fixed (time + gain)</option>
+      </select>
+      <span id="exp_fixed" style="display:none">
+        time <input type="number" id="exp_aec" min="0" max="65535" step="10" value="300" style="width:80px">
+        gain <input type="number" id="exp_gain" min="0" max="30" step="1" value="0" style="width:55px">
+      </span>
+      <button class="second" id="series" title="5 photos with −2, −1, 0, +1, +2 directly one after the other">📷×5 exposure series</button></p>
+    <p class="small">Are the white dice overexposed? Then take an <b>exposure series</b> (do not move dice and camera meanwhile)
+      and rate the 5 images - the summary then shows “per exposure”. With <b>fixed</b> the camera no longer adjusts:
+      time in sensor lines (the value depends on the sensor and resolution), gain 0…30 (more = brighter, but more noise).
+      The values the auto exposure chose are shown for each photo (“actual”).</p>
+    <p class="small">Higher resolutions are there to compare: rate the dice per resolution, the summary then shows whether it is worth it.
+      The live view continues in the last chosen resolution (choppier at 1600 × 1200).</p>
+    <p id="cap_status" class="small">{{ images|length }} capture(s) so far. Target: about 10.</p>
+    <p class="small">Tip: space bar = capture</p>
+  </div>
+</div>
+{% else %}
+<div class="warning">No camera board address entered. → <a href="{{ url_for('setup', back=folder) }}">Setup</a>
+(no firmware on the board yet? → <a href="{{ url_for('guide', name='firmware') }}">Guide: camera board firmware</a>)</div>
+{% endif %}
+<details style="margin-top:10px"><summary>Alternatively upload images</summary>
+  <form method="post" enctype="multipart/form-data" action="{{ url_for('cs_upload', folder=folder) }}">
+    <p class="small">Only use images from the camera board (640×480 to 1600×1200, e.g. saved from the board's page). Phone photos falsify the result.</p>
+    <input type="file" name="images" accept="image/jpeg,image/png" multiple> <button class="second" type="submit">Upload</button>
+  </form>
+</details>
+</div>
+
+<h2>Features of the symbols <span class="small">(optional, for the AI assessment)</span></h2>
+<div class="card">
+{% if p.symbols and p.symbols.confirmed %}<div class="note" style="margin-top:0">The symbols are confirmed in step 3 - the AI now gets
+  these details automatically (name, kind, colour, position). The text field here is then no longer used.</div>{% endif %}
+<form method="post" action="{{ url_for('cs_hints', folder=folder) }}">
+  <p style="margin-top:0" class="small">How do you recognise the symbols? One line each, e.g. “King: red figure”. Claude gets this text
+  with the AI assessment. (Later replaced by the exact record in step 3.)</p>
+  <textarea name="symbol_hints" rows="6" style="width:100%;max-width:560px;font:inherit;padding:6px"
+   placeholder="9: black pips&#10;10: red pips&#10;Jack: dark blue figure&#10;Queen: light blue figure&#10;King: red figure&#10;Ace: …">{{ p.symbol_hints or '' }}</textarea><br>
+  <button class="second" type="submit">Save</button>
+</form>
+</div>
+
+<h2>Surface &amp; tray</h2>
+<div class="card">
+<p style="margin-top:0"><b>Surface colour:</b>
+{% if p.surface %}
+  <span style="display:inline-block;width:46px;height:18px;vertical-align:middle;border:1px solid #888;border-radius:3px;background:rgb({{ p.surface.color_bgr[2] }},{{ p.surface.color_bgr[1] }},{{ p.surface.color_bgr[0] }})"></span>
+  measured in {{ p.surface.image }} (hue {{ p.surface.color_hsv[0] }}, saturation {{ p.surface.color_hsv[1]|int }}, brightness {{ p.surface.color_hsv[2]|int }})
+  <button class="second mini" id="surface_reset">back to default “green”</button>
+{% else %}
+  default “green” (felt). If that does not fit your cloth: choose <b>“Pick surface colour”</b> at the captures and click into the cloth.
+{% endif %}</p>
+<form method="post" action="{{ url_for('cs_tray', folder=folder) }}">
+  <label class="row"><span>Tray diameter (mm)</span>
+    <input type="number" name="diameter_mm" min="50" max="1000" step="1" value="{{ p.tray.diameter_mm or '' }}" style="width:90px">
+    <span class="small">diameter of the felt area, inside. With it the trainer estimates the distance via the tray edge.</span></label>
+  <label class="row"><span>Die width / edge length (mm)</span>
+    <input type="number" name="die_mm" min="5" max="50" step="0.1" value="{{ p.die.edge_mm or '' }}" style="width:90px">
+    <span class="small">Measure with a ruler or caliper. Second scale (also without tray) - used in step 2 as well.</span></label>
+  <button class="second" type="submit">Apply</button>
+</form>
+</div>
+
+<h2>Captures ({{ images|length }})
+  {% if images %}<form method="post" action="{{ url_for('cs_reanalyse', folder=folder) }}" style="display:inline">
+  <button class="second mini" type="submit" title="Look for the dice again; hand boxes, ratings and AI assessments stay">analyse all again</button></form>
+  <button class="second mini" id="start_over" title="Evaluate all photos as if they had just been taken">↺ rate again (from scratch)</button>
+  <button class="mini" id="ai_all" {{ '' if api_key_present else 'disabled title="No API key"' }}
+    data-images="{% for n, i in images %}{% if not i.ai and i.use and (i.analysis or {}).get('dice') %}{{ n }} {% endif %}{% endfor %}">🤖 AI for all images without assessment</button>
+  <span id="ai_all_status" class="small"></span>{% endif %}</h2>
+<p class="small">Saved in <code>{{ folder_path }}</code>.</p>
+<div class="card" id="modebar" style="position:sticky;top:0;z-index:5;padding:8px 14px">
+  <b>A click into the image means:</b>
+  <label style="margin-left:10px"><input type="radio" name="mode" value="view" checked> Switch view <span class="small">(marked → original → mask)</span></label>
+  <label style="margin-left:10px"><input type="radio" name="mode" value="surface"> Pick surface colour <span class="small">(click once into the cloth/felt)</span></label>
+  <label style="margin-left:10px"><input type="radio" name="mode" value="draw"> Draw dice <span class="small">(drag a box)</span></label>
+  <label style="margin-left:10px"><input type="radio" name="mode" value="tray"> Mark tray <span class="small">(click at least 5 points all around on the tray edge)</span></label>
+</div>
+
+<div class="grid">
+{% for name, info in images %}
+{% set a = info.analysis or {} %}
+{% set ws = a.dice or [] %}
+{% set ex = info.exposure %}
+<div class="imgcard {{ '' if info.use else 'off' }}" id="{{ name }}">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    <b>{{ name }}</b>
+    <span class="small">{% if a.image %}{{ a.image[0] }}×{{ a.image[1] }} · {% endif %}{% if ex %}<span title="{% if ex.actual_aec is defined %}actual: time {{ ex.actual_aec }}, gain ×{{ ex.actual_gain }}{% endif %}">{% if ex.mode == 'manual' %}fixed {{ ex.aec }}/{{ ex.gain }}{% else %}exp. {{ '%+d'|format(ex.level|default(0)) if ex.level else '0' }}{% endif %}</span> · {% endif %}{% if info.source=='uploaded' %}uploaded · {% endif %}
+      <label><input type="checkbox" class="use" data-image="{{ name }}" {{ 'checked' if info.use }}> use</label>
+      · <a href="#" class="delete" data-image="{{ name }}" style="color:#c0392b" title="Delete the photo for good">🗑 delete</a></span>
+  </div>
+  <div class="imgframe" style="position:relative;user-select:none">
+  <img src="{{ url_for('cs_image', folder=folder, name=name, kind='marked') }}" data-image="{{ name }}" data-kind="marked" class="switch" loading="lazy" draggable="false" style="display:block;width:100%">
+  </div>
+  <div class="traybar small" data-image="{{ name }}" style="margin-top:4px;{{ '' if info.tray_points else 'display:none' }}">
+    <span class="tb_text">{% if info.tray_points %}Tray marked by hand ({{ info.tray_points|length }} points, magenta).{% endif %}</span>
+    <button class="mini tb_ok" style="display:none">Apply tray</button>
+    <button class="second mini tb_discard" style="display:none">Discard points</button>
+    {% if info.tray_points %}<button class="second mini tb_delete">Delete hand tray (automatic again)</button>{% endif %}
+  </div>
+  <div class="small" style="margin:6px 0">
+    {% if a.ok %}
+      Elevation <b>{{ a.elevation_deg if a.elevation_deg is not none else '?' }}°</b>
+      {% if a.elevation_deg is none and info.ai and info.ai.elevation_deg %} <span title="estimate of the AI">(AI: {{ info.ai.elevation_deg }}°)</span>{% endif %}
+      {% if a.distance_cm %} · distance ≈ <b>{{ a.distance_cm }} cm</b>{% if a.tray and a.tray.source == 'hand' %} <span class="small">(tray by hand)</span>{% endif %}{% endif %}
+      {% if a.distance_die_cm %} · via dice ≈ {{ a.distance_die_cm }} cm{% endif %}
+      · {{ ws|length }} dice
+      {% if ws %} · size {{ ws|map(attribute='w')|min }}-{{ ws|map(attribute='w')|max }} px wide{% endif %}
+    {% if a.quality %}<br>brightness {{ a.quality.brightness_percent }} %
+      {% if a.quality.sharpness_dice is not none %} · sharpness dice <b>{{ a.quality.sharpness_dice|round|int }}</b>{% endif %}
+      · sharpness image {{ a.quality.sharpness_image|round|int }}
+      {% set over = a.quality.get('overexposed_percent') %}
+      {% if over is not none %} · overexposed <b class="{{ 'bad' if over >= 10 else ('tight' if over >= 3 else '') }}">{{ over }} %</b>
+        <span title="Share of the die face in pure white (all colours ≥ 250): no drawing left there. Median of the dice; worst die {{ a.quality.get('overexposed_max_percent') }} %">ⓘ</span>{% endif %}
+      {% if ex and ex.actual_aec is defined %}<br>actual exposure: time {{ ex.actual_aec }}, gain ×{{ ex.actual_gain }}{% endif %}{% endif %}
+    {% else %}<span class="bad">{{ a.error or 'not analysed' }}</span>{% endif %}
+    {% for h in a.hints or [] %}<br>⚠ {{ h }}{% endfor %}
+  </div>
+  {% if ws %}
+  <img src="{{ url_for('cs_image', folder=folder, name=name, kind='mosaic', tile=120) }}" loading="lazy" class="mosaic" data-image="{{ name }}">
+  <div class="small mosaicchoice" data-image="{{ name }}" style="margin:2px 0 4px">Crops:
+    <a href="#" data-cls="" style="font-weight:bold">camera pixels</a> ·
+    <a href="#" data-cls="64" title="crop scaled down the way a classifier with 64×64 input gets it">like classifier 64 px</a> ·
+    <a href="#" data-cls="96" title="crop scaled down the way a classifier with 96×96 input gets it">96 px</a></div>
+  {% set columns = [5, ws|length]|min %}
+  <div class="rating" style="display:grid;grid-template-columns:repeat({{ columns }},1fr)">
+    {% for f in ws %}
+    {% set aiw = ((info.ai.dice if info.ai else []) or [])|selectattr('nr', 'equalto', f.nr)|list %}
+    <div>
+      <b>{{ f.nr }}</b>{% if f.manual %} <span class="small">(hand)</span>{% endif %}
+      <select data-image="{{ name }}" data-nr="{{ f.nr }}" class="rat" title="Die {{ f.nr }}: top symbol unambiguously readable?">
+        {% set b = info.rating.get(f.nr|string, '') %}
+        <option value="" {{ 'selected' if not b }}>?</option>
+        <option value="readable" {{ 'selected' if b=='readable' }}>readable</option>
+        <option value="unsure" {{ 'selected' if b=='unsure' }}>unsure</option>
+        <option value="no" {{ 'selected' if b=='no' }}>not readable</option>
+        <option value="wrong" {{ 'selected' if b=='wrong' }}>no die / several</option>
+        {% if f.manual %}<option value="remove">✕ delete hand box</option>{% endif %}
+      </select>
+      {% if aiw %}<div title="{{ aiw[0].remark or '' }}">AI: <b>{{ aiw[0].top_symbol }}</b> ({{ {'good':'readable','partly':'unsure','no':'not readable'}.get(aiw[0].readability, aiw[0].readability) }})</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <div style="margin-top:6px">
+    <button class="second mini all" data-image="{{ name }}" data-value="readable">all readable</button>
+    <button class="second mini all" data-image="{{ name }}" data-value="no">all not readable</button>
+    <button class="mini aibtn" data-image="{{ name }}" {{ '' if api_key_present else 'disabled title="No API key"' }}>🤖 AI assessment</button>
+  </div>
+  {% endif %}
+  {% if info.ai %}
+  <div class="small" style="margin-top:6px;border-top:1px solid #eee;padding-top:6px">
+    <b>Claude:</b> {{ info.ai.dice_in_image }} dice, elevation ≈ {{ info.ai.elevation_deg }}°. {{ info.ai.image_quality }}
+    {% if info.ai.recommendation %}<br>💡 {{ info.ai.recommendation }}{% endif %}
+    <br><span style="opacity:.7">{{ info.ai._model }}, {{ info.ai._usage.input_tokens }}+{{ info.ai._usage.output_tokens }} tokens</span>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+</div>
+
+<h2>Summary</h2>
+<div class="card" id="summary">computing …</div>
+{% if p.camera_setup %}
+<p class="small">Last applied: {{ p.camera_setup.applied|replace('T',' ') }} (status {{ p.camera_setup.status }}).
+Applying again replaces this entry in project.json.</p>
+{% endif %}
+{% if p.camera and p.camera.measurement %}
+<p class="small">Last measurement of the fixed exposure: auto {{ p.camera.measurement.auto }} → fixed {{ p.camera.measurement.fixed }} → check {{ p.camera.measurement.check }}
+  ({{ 'confirmed' if p.camera.measurement.ok else 'not confirmed' }}).</p>
+{% endif %}
+{% endblock %}
+
+{% block script %}
+<script>
+const URL_RAT = "{{ url_for('cs_rating', folder=folder) }}";
+const URL_SUM = "{{ url_for('cs_summary', folder=folder) }}";
+const URL_APPLY = "{{ url_for('cs_apply', folder=folder) }}";
+const URL_CAP = "{{ url_for('cs_capture', folder=folder) }}";
+const URL_AI = "{{ url_for('cs_ai', folder=folder, name='XXXX') }}";
+const URL_IMG = "{{ url_for('cs_image', folder=folder, name='XXXX') }}";
+
+// --- capture
+const btn = document.getElementById('capture');
+async function capture() {
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const st = document.getElementById('cap_status');
+  const res = document.getElementById('res');
+  st.textContent = 'fetching image from the camera board (' + res.value.replace('x', ' × ') + ') …';
+  const r = await postJSON(URL_CAP, {resolution: res.value, exposure: exposureChoice()});
+  if (r.ok && r.warning) { alert(r.warning); }
+  if (r.ok) { location.hash = r.name; location.reload(); }
+  else { st.innerHTML = '<span class="bad">' + r.error + '</span>'; btn.disabled = false; }
+}
+if (btn) btn.onclick = capture;
+function exposureChoice() {
+  const b = document.getElementById('exp');
+  if (!b) return null;
+  if (b.value === 'fixed') return {aec: parseInt(document.getElementById('exp_aec').value || '300'), gain: parseInt(document.getElementById('exp_gain').value || '0')};
+  return {level: parseInt(b.value)};
+}
+const expChoice = document.getElementById('exp');
+if (expChoice) {
+  const show = () => { document.getElementById('exp_fixed').style.display = expChoice.value === 'fixed' ? '' : 'none'; };
+  try {
+    const v = JSON.parse(localStorage.getItem('pd_exposure') || 'null');
+    if (v) { expChoice.value = v.choice; document.getElementById('exp_aec').value = v.aec; document.getElementById('exp_gain').value = v.gain; }
+  } catch (e) {}
+  show();
+  const remember = () => { show(); try { localStorage.setItem('pd_exposure', JSON.stringify({choice: expChoice.value,
+    aec: document.getElementById('exp_aec').value, gain: document.getElementById('exp_gain').value})); } catch (e) {} };
+  expChoice.onchange = remember;
+  document.getElementById('exp_aec').onchange = remember;
+  document.getElementById('exp_gain').onchange = remember;
+}
+const URL_SERIES = "{{ url_for('cs_series', folder=folder) }}";
+const seriesBtn = document.getElementById('series');
+if (seriesBtn) seriesBtn.onclick = async () => {
+  seriesBtn.disabled = true; if (btn) btn.disabled = true;
+  const st = document.getElementById('cap_status');
+  st.textContent = 'exposure series: 5 photos (−2 … +2) - do not move dice and camera … (up to about 20 s at large resolutions)';
+  const r = await postJSON(URL_SERIES, {resolution: document.getElementById('res').value, after: exposureChoice()});
+  if (r.warning) alert(r.warning);
+  if (r.error) alert((r.names && r.names.length ? r.names.length + ' photo(s) saved, then error: ' : '') + r.error);
+  if (r.name) { location.hash = r.name; location.reload(); }
+  else { seriesBtn.disabled = false; if (btn) btn.disabled = false; st.textContent = ''; }
+};
+const resChoice = document.getElementById('res');
+if (resChoice) {
+  try { const v = localStorage.getItem('pd_resolution'); if (v && [...resChoice.options].some(o => o.value === v)) resChoice.value = v; } catch (e) {}
+  resChoice.onchange = () => { try { localStorage.setItem('pd_resolution', resChoice.value); } catch (e) {} };
+}
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && btn && !['INPUT','SELECT','TEXTAREA','BUTTON'].includes(document.activeElement.tagName)) { e.preventDefault(); capture(); }
+});
+
+// --- click into the image: depending on the mode
+const URL_SURF = "{{ url_for('cs_surface', folder=folder) }}";
+const URL_MAN = "{{ url_for('cs_manual', folder=folder) }}";
+const mode = () => document.querySelector('input[name=mode]:checked').value;
+function imgPoint(img, ev) {   // mouse position -> pixels in the original image (any resolution)
+  const r = img.getBoundingClientRect();
+  return {x: (ev.clientX - r.left) * img.naturalWidth / r.width, y: (ev.clientY - r.top) * img.naturalHeight / r.height,
+          px: ev.clientX - r.left, py: ev.clientY - r.top};
+}
+document.querySelectorAll('img.switch').forEach(img => {
+  let start = null, frame = null;
+  img.addEventListener('mousedown', ev => {
+    if (mode() !== 'draw') return;
+    ev.preventDefault();
+    start = imgPoint(img, ev);
+    frame = document.createElement('div');
+    frame.style.cssText = 'position:absolute;border:2px solid #00dcff;pointer-events:none;left:' + start.px + 'px;top:' + start.py + 'px';
+    img.parentElement.appendChild(frame);
+  });
+  img.addEventListener('mousemove', ev => {
+    if (!start || !frame) return;
+    const p = imgPoint(img, ev);
+    frame.style.left = Math.min(p.px, start.px) + 'px'; frame.style.top = Math.min(p.py, start.py) + 'px';
+    frame.style.width = Math.abs(p.px - start.px) + 'px'; frame.style.height = Math.abs(p.py - start.py) + 'px';
+  });
+  const end = async ev => {
+    if (!start) return;
+    const p = imgPoint(img, ev), s0 = start;
+    start = null;
+    const w = Math.abs(p.x - s0.x), h = Math.abs(p.y - s0.y);
+    if (w < 5 || h < 5) { frame.remove(); return; }
+    const r = await postJSON(URL_MAN, {image: img.dataset.image, action: 'new', x: Math.min(p.x, s0.x), y: Math.min(p.y, s0.y), w: w, h: h});
+    if (r.ok) { location.hash = img.dataset.image; location.reload(); } else { frame.remove(); alert(r.error); }
+  };
+  img.addEventListener('mouseup', end);
+  img.addEventListener('mouseleave', ev => { if (start) end(ev); });
+  img.addEventListener('click', async ev => {
+    const m = mode();
+    if (m === 'view') {
+      const order = {marked: 'original', original: 'mask', mask: 'marked'};
+      img.dataset.kind = order[img.dataset.kind];
+      img.src = URL_IMG.replace('XXXX', img.dataset.image) + '?kind=' + img.dataset.kind;
+      img.title = img.dataset.kind;
+    } else if (m === 'surface') {
+      const p = imgPoint(img, ev);
+      document.body.style.cursor = 'wait';
+      const r = await postJSON(URL_SURF, {image: img.dataset.image, x: p.x, y: p.y});
+      document.body.style.cursor = '';
+      if (r.ok) { location.hash = img.dataset.image; location.reload(); } else alert(r.error || 'Error');
+    } else if (m === 'tray') {
+      trayPoint(img, imgPoint(img, ev));
+    }
+  });
+});
+
+// --- mark the tray: collect points (only in the browser), only “Apply tray” sends them to the trainer
+const URL_TP = "{{ url_for('cs_tray_points', folder=folder) }}";
+const trayPoints = {};   // image -> [[x,y], ...]
+function bar(image) { return document.querySelector(`.traybar[data-image="${image}"]`); }
+function showTrayBar(image) {
+  const l = bar(image), n = (trayPoints[image] || []).length;
+  l.style.display = '';
+  l.querySelector('.tb_text').textContent = n >= 5 ? `${n} points set - more all around are welcome, then apply.`
+                                                 : `${n} of at least 5 points set on the tray edge (spread all around).`;
+  l.querySelector('.tb_ok').style.display = n >= 5 ? '' : 'none';
+  l.querySelector('.tb_ok').disabled = n < 5;
+  l.querySelector('.tb_discard').style.display = n ? '' : 'none';
+}
+function trayPoint(img, p) {
+  const image = img.dataset.image;
+  (trayPoints[image] = trayPoints[image] || []).push([Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10]);
+  const d = document.createElement('div');
+  d.className = 'tpoint';
+  // in percent, so the point stays at the right place when the window size changes
+  d.style.cssText = `position:absolute;width:9px;height:9px;margin:-5px 0 0 -5px;border-radius:50%;background:#ff00ff;border:1px solid #fff;pointer-events:none;left:${p.x / img.naturalWidth * 100}%;top:${p.y / img.naturalHeight * 100}%`;
+  img.parentElement.appendChild(d);
+  showTrayBar(image);
+}
+document.querySelectorAll('.traybar').forEach(l => {
+  const image = l.dataset.image;
+  l.querySelector('.tb_ok').onclick = async () => {
+    const r = await postJSON(URL_TP, {image: image, points: trayPoints[image] || []});
+    if (r.ok) { location.hash = image; location.reload(); } else alert(r.error || 'Error');
+  };
+  l.querySelector('.tb_discard').onclick = () => {
+    trayPoints[image] = [];
+    document.querySelectorAll(`img.switch[data-image="${image}"]`).forEach(i => i.parentElement.querySelectorAll('.tpoint').forEach(d => d.remove()));
+    showTrayBar(image);
+  };
+  const lo = l.querySelector('.tb_delete');
+  if (lo) lo.onclick = async () => {
+    if (!confirm('Delete the tray marked by hand? Then the automatic detection applies again.')) return;
+    const r = await postJSON(URL_TP, {image: image, points: []});
+    if (r.ok) { location.hash = image; location.reload(); } else alert(r.error || 'Error');
+  };
+});
+document.querySelectorAll('input[name=mode]').forEach(r => r.onchange = () => {
+  document.querySelectorAll('img.switch').forEach(i => i.style.cursor = {view: 'pointer', surface: 'crosshair', draw: 'crosshair', tray: 'crosshair'}[mode()]);
+  try { sessionStorage.setItem('pd_mode', mode()); } catch (e) {}
+});
+try { const m = sessionStorage.getItem('pd_mode'); if (m) { document.querySelector(`input[name=mode][value=${m}]`).checked = true; document.querySelector(`input[name=mode][value=${m}]`).onchange(); } } catch (e) {}
+const sr = document.getElementById('surface_reset');
+if (sr) sr.onclick = async () => { await postJSON(URL_SURF, {reset: true}); location.reload(); };
+
+// --- mosaic: camera pixels or "what the classifier sees" (64/96 px); the choice applies to all photos
+function showMosaic(cls) {
+  document.querySelectorAll('img.mosaic').forEach(i => {
+    i.src = URL_IMG.replace('XXXX', i.dataset.image) + '?kind=mosaic&tile=120' + (cls ? '&cls=' + cls : '');
+  });
+  document.querySelectorAll('.mosaicchoice a').forEach(a => a.style.fontWeight = a.dataset.cls === (cls || '') ? 'bold' : '');
+  try { sessionStorage.setItem('pd_mosaic_cls', cls || ''); } catch (e) {}
+}
+document.querySelectorAll('.mosaicchoice a').forEach(a => a.onclick = ev => { ev.preventDefault(); showMosaic(a.dataset.cls); });
+try { const c = sessionStorage.getItem('pd_mosaic_cls'); if (c) showMosaic(c); } catch (e) {}
+
+// --- rate again: reset everything except the photos themselves (the old evaluation is saved)
+const URL_OVER = "{{ url_for('cs_start_over', folder=folder) }}";
+const so = document.getElementById('start_over');
+if (so) so.onclick = async () => {
+  if (!confirm('Rate all photos again, as if they had just been taken?\n\n' +
+      'Gone are then: your ratings, hand boxes, marked trays, AI assessments and “use” ticks.\n' +
+      'Kept are: the photos with resolution and exposure, surface colour, tray and die size.\n\n' +
+      'The previous evaluation is saved first (folder backup_<time> in the photo folder).')) return;
+  so.disabled = true; so.textContent = '↺ analysing again …';
+  const r = await postJSON(URL_OVER);
+  if (r.ok) location.reload(); else { alert(r.error || 'Error'); so.disabled = false; so.textContent = '↺ rate again (from scratch)'; }
+};
+
+// --- delete a photo (with a safety question)
+const URL_DEL = "{{ url_for('cs_photo_delete', folder=folder, name='XXXX') }}";
+document.querySelectorAll('a.delete').forEach(a => a.onclick = async ev => {
+  ev.preventDefault();
+  if (!confirm(`Delete photo ${a.dataset.image} for good?\n\nIts ratings and hand boxes are then gone too. This cannot be undone.`)) return;
+  const r = await postJSON(URL_DEL.replace('XXXX', a.dataset.image));
+  if (r.ok) location.reload(); else alert('Delete failed');
+});
+
+// --- AI for all images without an assessment (one after the other)
+const aiAll = document.getElementById('ai_all');
+if (aiAll) aiAll.onclick = async () => {
+  const list = aiAll.dataset.images.trim().split(/\s+/).filter(x => x);
+  const st = document.getElementById('ai_all_status');
+  if (!list.length) { st.textContent = 'All used images have an AI assessment already.'; return; }
+  if (!confirm(`Send ${list.length} image(s) to Claude? It costs only fractions of a cent per image.`)) return;
+  aiAll.disabled = true;
+  let errors = 0;
+  for (let i = 0; i < list.length; i++) {
+    st.textContent = `asking Claude … ${i + 1} of ${list.length} (${list[i]})`;
+    const r = await postJSON(URL_AI.replace('XXXX', list[i]));
+    if (!r.ok) { errors++; st.textContent = `Error at ${list[i]}: ${r.error}`; if (/key|401|403|429/i.test(r.error)) break; }
+  }
+  st.textContent = errors ? `done, ${errors} error(s)` : 'done';
+  setTimeout(() => location.reload(), errors ? 2500 : 600);
+};
+
+// --- rating
+document.querySelectorAll('select.rat').forEach(s => s.onchange = async () => {
+  if (s.value === 'remove') {
+    await postJSON(URL_MAN, {image: s.dataset.image, action: 'delete', nr: s.dataset.nr});
+    location.hash = s.dataset.image; location.reload(); return;
+  }
+  await postJSON(URL_RAT, {image: s.dataset.image, die: s.dataset.nr, value: s.value});
+  summary();
+});
+document.querySelectorAll('button.all').forEach(b => b.onclick = async () => {
+  await postJSON(URL_RAT, {image: b.dataset.image, all: b.dataset.value});
+  document.querySelectorAll(`select.rat[data-image="${b.dataset.image}"]`).forEach(s => s.value = b.dataset.value);
+  summary();
+});
+document.querySelectorAll('input.use').forEach(c => c.onchange = async () => {
+  await postJSON(URL_RAT, {image: c.dataset.image, use: c.checked});
+  c.closest('.imgcard').classList.toggle('off', !c.checked);
+  summary();
+});
+
+// --- AI
+document.querySelectorAll('button.aibtn').forEach(b => b.onclick = async () => {
+  b.disabled = true; b.textContent = '🤖 asking Claude …';
+  const r = await postJSON(URL_AI.replace('XXXX', b.dataset.image));
+  if (r.ok) { location.hash = b.dataset.image; location.reload(); }
+  else { b.textContent = '🤖 AI assessment'; b.disabled = false; alert(r.error); }
+});
+
+// --- summary
+function distanceText(a) {
+  let t = a.min + ' – ' + a.max + ' cm';
+  if (a.median !== undefined) t += ', median ' + a.median + ' cm';
+  if (a.outliers) t += ` <span class="small">(${a.outliers} outlier(s) not counted)</span>`;
+  return t;
+}
+function percent(x) { return x === null || x === undefined ? '–' : Math.round(x * 100) + ' %'; }
+function resTable(z) {
+  const per = z.per_resolution || [];
+  if (!per.length) return '';
+  let h = `<h3 style="margin-bottom:4px">Per capture resolution</h3><table>
+    <tr><th>Resolution</th><th>Images</th><th>Dice</th><th>Dice in the camera image<br><span class="small">median / 10 % value</span></th>
+    <th>in detector 224</th><th>Crop in the camera image<br><span class="small">→ classifier</span></th><th>readable by you</th><th>readable by AI</th></tr>`;
+  for (const r of per) {
+    const rec = z.resolution_recommended === r.resolution ? ' style="font-weight:bold"' : '';
+    if (!r.dice) { h += `<tr${rec}><td>${r.resolution}</td><td>${r.images}</td><td>0</td><td colspan=5>–</td></tr>`; continue; }
+    h += `<tr${rec}><td>${r.resolution}${rec ? ' ✔' : ''}</td><td>${r.images}</td><td>${r.dice}</td>
+      <td>${r.px_median} / ${r.px_p10} px</td><td>${r.detector224_px} px</td><td>${r.crop_camera_px} px → ${z.crop_px} px</td>
+      <td>${percent(r.readable_share)}${r.rated ? ' <span class="small">(' + r.rated + ' rated)</span>' : ''}</td>
+      <td>${percent(r.ai_share)}${r.ai_rated ? ' <span class="small">(' + r.ai_rated + ')</span>' : ''}</td></tr>`;
+  }
+  return h + `</table><p class="small">“in detector 224” depends only on the distance, not on the resolution (the image is scaled down for the detector).
+    “Crop in the camera image” = die + margin in real camera pixels; it is brought to the classifier input (${z.crop_px} px). For a fair comparison
+    capture and rate a few images per resolution at the same camera position.</p>`;
+}
+function expTable(z) {
+  const per = z.per_exposure || [];
+  if (!per.length || (per.length === 1 && per[0].key === 'unknown')) return '';
+  const rec = z.exposure_recommended ? z.exposure_recommended.key : null;
+  let h = `<h3 style="margin-bottom:4px">Per exposure</h3><table>
+    <tr><th>Exposure</th><th>Images</th><th>Dice</th><th>overexposed<br><span class="small">median / 90 % value</span></th>
+    <th>Brightness dice</th><th>Sharpness dice</th><th>Actual (time / gain)</th><th>readable by you</th><th>readable by AI</th></tr>`;
+  for (const r of per) {
+    const bold = r.key === rec ? ' style="font-weight:bold"' : '';
+    h += `<tr${bold}><td>${r.exposure}${bold ? ' ✔' : ''}</td><td>${r.images}</td><td>${r.dice}</td>
+      <td>${r.overexposed_percent === null ? '–' : r.overexposed_percent + ' % / ' + r.overexposed_p90_percent + ' %'}</td>
+      <td>${r.brightness_dice_percent === null ? '–' : Math.round(r.brightness_dice_percent) + ' %'}</td>
+      <td>${r.sharpness_dice === null ? '–' : Math.round(r.sharpness_dice)}</td>
+      <td>${r.actual_aec === null ? '–' : r.actual_aec + ' / ×' + r.actual_gain}</td>
+      <td>${percent(r.readable_share)}${r.rated ? ' <span class="small">(' + r.rated + ')</span>' : ''}</td>
+      <td>${percent(r.ai_share)}${r.ai_rated ? ' <span class="small">(' + r.ai_rated + ')</span>' : ''}</td></tr>`;
+  }
+  return h + `</table><p class="small">“overexposed” = share of the die face in pure white (no drawing left) - measured, not estimated.
+    “unknown” = uploaded photos. The sharpness number also rises with the contrast, so it is only roughly comparable between exposures.</p>`;
+}
+const LEVEL = {'good': 'ok', 'tight': 'tight', 'too small': 'bad'};
+const STATUS_TEXT = {'unrated': 'not rated yet'};
+async function summary() {
+  const z = await (await fetch(URL_SUM)).json();
+  const el = document.getElementById('summary');
+  if (z.status === 'empty') { el.innerHTML = '<p>' + z.recommendation.join('<br>') + '</p>'; return; }
+  // suggestion for the camera setting: already set > recommendation > most frequent in the photos
+  const kSug = {resolution: '640x480', level: 0, fixed: false, source: '(default)'};
+  if (z.camera_project) Object.assign(kSug, {resolution: z.camera_project.resolution, level: z.camera_project.exposure_level,
+                                             fixed: !!z.camera_project.fixed_exposure, source: '(set so far)'});
+  else {
+    const pr = (z.per_resolution || []).filter(r => r.dice).sort((a, b) => b.images - a.images);
+    const pe = (z.per_exposure || []).filter(r => /^a-?\d$/.test(r.key)).sort((a, b) => b.images - a.images);
+    if (z.resolution_recommended) kSug.resolution = z.resolution_recommended.replace('×', 'x'); else if (pr.length) kSug.resolution = pr[0].key;
+    if (z.exposure_recommended && /^a-?\d$/.test(z.exposure_recommended.key)) kSug.level = parseInt(z.exposure_recommended.key.slice(1));
+    else if (pe.length) kSug.level = parseInt(pe[0].key.slice(1));
+    kSug.source = '(suggestion from your photos)';
+  }
+  let h = `<p>Overall verdict: <span class="badge ${z.status.replace(' ', '_')}">${STATUS_TEXT[z.status] || z.status}</span>
+    &nbsp; ${z.images_used} of ${z.images_total} images, ${z.dice_count} dice, ${z.rated} of them rated by you.</p>
+    <div class="twocol"><div><table>
+    <tr><th colspan=2>Converted to 640×480</th></tr>
+    <tr><td>Die size (smallest side)</td><td>${z.dice_px.min} – ${z.dice_px.max} px, median ${z.dice_px.median} px</td></tr>
+    <tr><td>smaller dice (10 % value)</td><td>${z.dice_px.p10} px</td></tr>
+    <tr><td>Elevation from above</td><td>${z.elevation_deg ? z.elevation_deg.min + '° – ' + z.elevation_deg.max + '° <span class="small">(' + z.elevation_deg.source + ')</span>' : '– (tray never completely in the picture)'}</td></tr>
+    <tr><td>Distance (rough)</td><td>${z.distance_cm ? distanceText(z.distance_cm) + ' <span class="small">(' + z.distance_cm.source + ')</span>' : '– (tray diameter or die width missing)'}</td></tr>
+    ${z.distance_die_cm && z.distance_cm && z.distance_cm.source === 'tray' ? `<tr><td>Distance via die width</td><td>${distanceText(z.distance_die_cm)} <span class="small">(cross-check)</span></td></tr>` : ''}
+    <tr><td>rated readable by you</td><td>${z.readable_share === null ? '– not rated yet' : Math.round(z.readable_share * 100) + ' %' + (z.readability ? ` (${z.readability.readable} readable, ${z.readability.unsure} unsure, ${z.readability.no} not)` : '')}</td></tr>
+    <tr><td>AI considered readable</td><td>${z.ai_determinable_share === null ? '– (no AI assessment)' : Math.round(z.ai_determinable_share * 100) + ' % of ' + z.ai_rated + ' dice <span class="small">(only for comparison)</span>'}</td></tr>
+    ${(z.ai_count_mismatch || []).length ? `<tr><td>Number of dice AI ≠ found</td><td>${z.ai_count_mismatch.map(x => x.image + ': AI ' + x.ai + ', found ' + x.found).join('<br>')}</td></tr>` : ''}
+    <tr><td>everything readable from</td><td>${z.readable_from_px ? z.readable_from_px + ' px <span class="small">(real camera pixels)</span>' : '–'}</td></tr>
+    <tr><td>Brightness image</td><td>${z.brightness_percent ? Math.round(z.brightness_percent.min) + ' – ' + Math.round(z.brightness_percent.max) + ' %' : '–'}</td></tr>
+    <tr><td>Die face overexposed (median)</td><td>${z.overexposed_percent === null || z.overexposed_percent === undefined ? '–' : z.overexposed_percent + ' %'}</td></tr>
+    <tr><td>Sharpness dice</td><td>${z.sharpness_dice ? Math.round(z.sharpness_dice.min) + ' (' + z.sharpness_dice.min_image + ') – ' + Math.round(z.sharpness_dice.max) + ' (' + z.sharpness_dice.max_image + ')' : '–'}</td></tr>
+    </table></div><div><table>
+    <tr><th>Detector input</th><th>Dice there</th><th>Compute time</th><th></th></tr>`;
+  for (const d of z.detector) h += `<tr><td>${d.imgsz}×${d.imgsz}</td><td>${d.die_px} px</td><td>×${d.compute_factor}</td><td class="${LEVEL[d.level]}">${d.level}</td></tr>`;
+  h += `</table><p class="small">Rule of thumb: from about 14 px good, 10-14 px tight (finest grid of the detector = 8 px). Compute time relative to 224.</p></div></div>
+    ${resTable(z)}
+    ${expTable(z)}
+    <h3 style="margin-bottom:4px">Recommendation</h3><ul>${z.recommendation.map(e => '<li>' + e + '</li>').join('')}</ul>
+    <h3 style="margin-bottom:4px">Camera setting for the project</h3>
+    <p class="small" style="margin-top:0">Then applies to the test images (step 8), the renders and the firmware (model_config.h).</p>
+    <p>Resolution <select id="k_res">${['640x480', '800x600', '1024x768', '1280x1024', '1600x1200'].map(a =>
+        `<option value="${a}" ${a === kSug.resolution ? 'selected' : ''}>${a.replace('x', ' × ')}</option>`).join('')}</select>
+      &nbsp; Exposure <select id="k_exp">${[-2, -1, 0, 1, 2].map(b =>
+        `<option value="${b}" ${b === kSug.level ? 'selected' : ''}>auto ${b > 0 ? '+' + b : (b < 0 ? '−' + (-b) : '0')}</option>`).join('')}</select>
+      <span class="small">${kSug.source}</span></p>
+    <p><label><input type="checkbox" id="k_fixed" ${kSug.fixed ? 'checked' : ''}> keep the exposure fixed</label>
+      <span class="small">- the trainer measures what the auto exposure chooses now (camera board on the tray, as when playing),
+      saves these values and checks them with a second photo. Fixed values make all captures of the project equally bright;
+      if your light changes a lot, leave it off.</span></p>
+    <p><button id="apply">Apply result and camera to project.json</button> <span id="apply_res"></span></p>`;
+  el.innerHTML = h;
+  document.getElementById('apply').onclick = async () => {
+    if (z.status === 'unrated' && !confirm('You have not rated anything yet. Apply anyway?')) return;
+    const b = document.getElementById('apply'); b.disabled = true;
+    document.getElementById('apply_res').textContent = document.getElementById('k_fixed').checked ? 'measuring the exposure on the camera board …' : '';
+    const r = await postJSON(URL_APPLY, {resolution: document.getElementById('k_res').value,
+                                         exposure: parseInt(document.getElementById('k_exp').value),
+                                         fixed: document.getElementById('k_fixed').checked});
+    b.disabled = false;
+    if (r.ok && r.warning) alert(r.warning);
+    document.getElementById('apply_res').innerHTML = r.ok
+      ? (r.done ? '<span class="ok">✔ applied - step 1 is done.</span>' : '<span class="tight">applied, but status “' + r.status + '” - the step stays “in progress”.</span>')
+        + (r.camera && r.camera.fixed_exposure ? ` Fixed exposure: aec ${r.camera.fixed_exposure.aec}, gain ${r.camera.fixed_exposure.gain}.` : '')
+      : '<span class="bad">' + r.error + '</span>';
+    if (r.ok) setTimeout(() => location.reload(), 1800);
+  };
+}
+summary();
+</script>
+{% endblock %}

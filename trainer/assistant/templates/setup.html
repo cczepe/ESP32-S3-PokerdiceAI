@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Setup{% endblock %}
+{% block content %}
+<h1>0 · Setup</h1>
+<p>These settings apply to <b>all projects</b>. They are stored only on this computer in
+<code>{{ config_folder }}</code> - that is <b>outside</b> the project folders, so that the API key is never uploaded to Google Drive.</p>
+{% if message %}<div class="note">{{ message }}</div>{% endif %}
+{% if back %}<p><a href="{{ url_for('project', folder=back) }}">← back to the project</a></p>{% endif %}
+
+<h2>1. Anthropic API key</h2>
+<div class="card">
+  <p><b>What for?</b> The trainer sends images to Claude and gets assessments back (in step 1 e.g. “which symbols are readable”).
+  Each request costs a small fraction of a cent from your credit.</p>
+  {% if api_key_present %}
+    <p class="ok">✔ Key present ({{ api_key_masked }}) - source:
+      {{ 'environment variable ANTHROPIC_API_KEY (takes precedence)' if api_key_source=='environment' else 'file api_key.txt' }}</p>
+  {% else %}
+    <p class="bad">No key entered yet.</p>
+  {% endif %}
+  <form method="post">
+    <input type="hidden" name="action" value="key">
+    <label class="row"><span>New key</span><input type="password" name="api_key" size="50" placeholder="sk-ant-..." autocomplete="off"></label>
+    <button type="submit">Save</button>
+  </form>
+  {% if api_key_source == 'file' %}
+  <form method="post" style="margin-top:6px"><input type="hidden" name="action" value="key_delete">
+    <button class="second mini" type="submit" onclick="return confirm('Really delete the saved key?')">delete saved key</button></form>
+  {% endif %}
+  <p style="margin-top:12px"><button type="button" id="apitest" class="second">Test connection</button> <span id="apires"></span></p>
+  <p class="small">You get the key in the Anthropic Console (console.anthropic.com → API Keys). It is never in the code and never in a project folder.</p>
+</div>
+
+<h2>2. Further settings</h2>
+<div class="card">
+<form method="post">
+  <input type="hidden" name="action" value="settings">
+  <label class="row"><span>Camera board address</span><input type="text" name="device_address" value="{{ sett.device_address }}" placeholder="pokerdice.local or 192.168.1.57">
+    <span class="small">pokerdice.local, or the IP address from your router / the serial log</span></label>
+  <label class="row"><span>Claude model</span><input type="text" name="model" value="{{ sett.model }}" size="28">
+    <span class="small">default: claude-sonnet-5-5 (good with images, inexpensive)</span></label>
+  <label class="row"><span>Drive folder</span><input type="text" name="drive_folder" value="{{ sett.drive_folder }}">
+    <span class="small">name of the folder in “My Drive” (for the Colab package)</span></label>
+  <label class="row"><span>Camera field of view (diagonal, °)</span><input type="number" step="0.5" name="fov_diag_deg" value="{{ sett.fov_diag_deg }}">
+    <span class="small">typical OV2640/OV3660 module: 66°. Only for the rough distance estimate</span></label>
+  <button type="submit">Save</button>
+</form>
+<p style="margin-top:12px"><button type="button" id="devtest" class="second">Test camera board</button> <span id="devres"></span></p>
+</div>
+
+<div class="note">No firmware on the camera board yet? → <a href="{{ url_for('guide', name='firmware') }}">Guide: camera board firmware</a></div>
+{% endblock %}
+{% block script %}
+<script>
+document.getElementById('apitest').onclick = async ev => {
+  const b = ev.target, o = document.getElementById('apires');
+  b.disabled = true; o.textContent = 'asking Claude …';
+  const r = await postJSON('{{ url_for("api_test") }}');
+  b.disabled = false;
+  o.innerHTML = r.ok ? `<span class="ok">✔ Connection ok</span> - ${r.model} answers “${r.answer}” (${r.usage.input_tokens}+${r.usage.output_tokens} tokens)`
+                     : `<span class="bad">✘ ${r.error}</span>`;
+};
+document.getElementById('devtest').onclick = async ev => {
+  const b = ev.target, o = document.getElementById('devres');
+  b.disabled = true; o.textContent = 'connecting …';
+  const r = await postJSON('{{ url_for("device_test") }}');
+  b.disabled = false;
+  if (r.ok) { const s = r.info, w = s.wifi || {};
+    o.innerHTML = `<span class="ok">✔ Camera board found</span> - firmware ${s.firmware}, sensor ${s.sensor}, Wi-Fi “${w.ssid || '-'}” ${w.rssi || ''} dBm, `
+      + `camera ${s.camera_ok ? 'ok' : '<span class=bad>ERROR</span>'}`;
+  } else o.innerHTML = `<span class="bad">✘ ${r.error}</span>`;
+};
+</script>
+{% endblock %}

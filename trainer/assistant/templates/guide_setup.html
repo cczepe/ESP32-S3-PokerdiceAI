@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Python environment{% endblock %}
+{% block content %}
+<h1>Python environment <code>.venv</code></h1>
+<p>An own, self-contained Python environment only for this repository, in <code>{{ REPO|path('.venv') }}</code>. It uses <b>Python 3.11</b>,
+because esp-ppq (to convert the models for the camera board) can only be installed there.</p>
+<div class="note">If you see this page, the trainer is running already - the setup is done.
+The page is for looking things up (e.g. if you have to create the environment again).</div>
+
+<h2>Create it (once)</h2>
+<p><b>Windows</b> (PowerShell in the repository folder):</p>
+<pre class="cmd">cd "{{ REPO }}"
+powershell -ExecutionPolicy Bypass -File setup.ps1</pre>
+<p><b>Linux / macOS:</b></p>
+<pre class="cmd">cd "{{ REPO }}"
+./setup.sh</pre>
+<p>The script creates <code>.venv</code> with Python 3.11 and installs everything from <code>trainer/requirements.txt</code>
+(Flask, anthropic, OpenCV, onnxruntime, torch CPU, esp-ppq …). The first run takes a few minutes.</p>
+
+<h2>Start the trainer</h2>
+<p>Easiest: double-click <code>start.bat</code> (Windows) or run <code>./start.sh</code>. Or directly:</p>
+<pre class="cmd">cd "{{ REPO }}"
+.venv\Scripts\python.exe trainer\assistant\app.py</pre>
+<p class="small">Quit with Ctrl+C in the terminal window. All start options: <code>.venv\Scripts\python.exe trainer\assistant\app.py --help</code>
+(Linux/macOS: <code>.venv/bin/python trainer/assistant/app.py --help</code>)</p>
+
+<h2>Common errors</h2>
+<table>
+<tr><th>Message</th><th>Solution</th></tr>
+<tr><td>“No suitable Python runtime found” for <code>py -3.11</code></td>
+    <td>Python 3.11 is not installed. Install it from python.org (it can live next to other versions). Installed versions: <code>py -0</code></td></tr>
+<tr><td>“… cannot be loaded because running scripts is disabled”</td>
+    <td>Start the script as shown above with <code>-ExecutionPolicy Bypass</code>, or once <code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code>.</td></tr>
+<tr><td>“ModuleNotFoundError: No module named 'flask'”</td>
+    <td>The trainer was started with the wrong Python. Use <code>.venv\Scripts\python.exe</code> or start.bat.</td></tr>
+<tr><td>Port 5000 in use</td>
+    <td>Choose another port: <code>… app.py --port 5050</code></td></tr>
+</table>
+{% endblock %}

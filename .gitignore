@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Your own data - never into the repository (photos, renders, projects, backups)
+workspace/
+
+# ESP-IDF build output
+firmware/build/
+firmware/managed_components/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/dependencies.lock
+firmware/.clangd
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# firmware/models/ (dice_det.espdl, dice_cls.espdl, model_config.h) is NOT ignored on purpose:
+# the example models are part of the repository, so the firmware can be built without training.
+

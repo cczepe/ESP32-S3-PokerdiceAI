@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pokerdice</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--bg:#10141c;--panel:#1a2130;--line:#2c3547;--text:#e8ecf3;--dim:#8d97aa;--yellow:#f2c230;--blue:#4ea1ff;
+      --green:#3ccf6e;--orange:#ff9d2e;--red:#ff5a5a}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:center;gap:10px;padding:10px 14px 6px}
+.top h1{margin:0;font-size:20px;color:var(--yellow);letter-spacing:.5px}
+.chip{font-size:13px;padding:2px 9px;border-radius:20px;background:var(--panel);color:var(--dim);white-space:nowrap}
+.chip.stable{background:#16351f;color:var(--green)}
+.chip.rolling{background:#3a2a10;color:var(--orange)}
+.chip.error,.chip.offline,.chip.no_models{background:#3a1616;color:var(--red)}
+.chip.pause,.chip.busy{background:#2a2f3d;color:var(--yellow)}
+.net{margin-left:auto;font-size:13px;color:var(--dim);text-align:right}
+nav{display:flex;overflow-x:auto;padding:0 4px;scrollbar-width:none}
+nav button{flex:1 0 auto;background:none;border:0;border-bottom:3px solid transparent;color:var(--dim);padding:8px 8px;font-size:14px;cursor:pointer}
+nav button.on{color:var(--text);border-bottom-color:var(--yellow)}
+main{max-width:900px;margin:0 auto;padding:14px}
+section{display:none}section.on{display:block}
+.panel{background:var(--panel);border-radius:10px;padding:14px;margin-bottom:14px}
+.hand{font-size:30px;font-weight:700;color:var(--yellow);text-align:center;min-height:40px}
+.sub{text-align:center;color:var(--dim);font-size:14px;min-height:20px}
+.tiles{display:flex;justify-content:center;gap:min(2vw,12px);margin:16px 0 10px}
+.tile{flex:0 1 92px;aspect-ratio:1;min-width:0;border-radius:12px;display:flex;align-items:center;justify-content:center;
+      font-size:min(8vw,44px);font-weight:700;border:3px solid var(--blue);color:var(--blue)}
+.tile.full{background:var(--blue);color:#0b1322}
+.tile.empty{border-style:dashed;border-color:var(--line);color:var(--line)}
+.tile.unsure{animation:blink .8s steps(2) infinite;border-color:var(--orange);color:var(--orange)}
+.tiles.new .tile{animation:hop .45s ease}
+@keyframes hop{0%{transform:translateY(0)}40%{transform:translateY(-14px)}100%{transform:translateY(0)}}
+@keyframes blink{50%{opacity:.25}}
+.buttons{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:10px}
+button.act,a.act{display:inline-block;background:var(--line);color:var(--text);border:0;border-radius:8px;padding:9px 15px;font-size:15px;
+                 cursor:pointer;text-decoration:none}
+button.act.main{background:var(--yellow);color:#1b1600;font-weight:600}
+button.act.warn{background:#5a2020}
+button.act:disabled{opacity:.5}
+a.act.small{padding:6px 10px;font-size:14px;margin:3px 4px 3px 0}
+.canvasbox{position:relative;background:#000;border-radius:8px;overflow:hidden}
+canvas#live{width:100%;display:block;aspect-ratio:4/3}
+img#stream{width:100%;display:block;background:#000;border-radius:8px;min-height:120px}
+.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:15px;
+         pointer-events:none;text-align:center;padding:10px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .k{color:var(--dim)}
+.row .v{font-variant-numeric:tabular-nums;text-align:right}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+h2{font-size:15px;color:var(--dim);font-weight:600;margin:0 0 6px;text-transform:uppercase;letter-spacing:.6px}
+table{width:100%;border-collapse:collapse}
+td,th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;font-variant-numeric:tabular-nums}
+th{color:var(--dim);font-weight:500;font-size:14px}
+td.sym{font-weight:700;letter-spacing:1px;white-space:nowrap}
+td.when{white-space:nowrap}
+select,input{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px;font-size:15px}
+input[type=text],input[type=password],select.wide{width:100%;margin:4px 0 8px}
+input[type=number]{width:80px}
+input[type=range]{width:150px;padding:0}
+input[type=checkbox]{width:22px;height:22px;accent-color:var(--yellow)}
+.saved{color:var(--green);font-size:14px;min-height:20px;text-align:center}
+.ok{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--orange)}.dim{color:var(--dim)}
+canvas#chart{width:100%;height:140px;display:block}
+.small{font-size:13px;color:var(--dim)}
+code{font-size:13px;color:var(--text)}
+.dicelist{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.dicelist span{background:var(--bg);border-radius:6px;padding:4px 8px;font-size:14px}
+#msg:empty{display:none}
+#msg{background:#3a2a10;color:var(--orange);border-radius:8px;padding:10px 12px;margin:0 0 14px}
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <h1>Pokerdice</h1>
+    <span id="chip" class="chip">…</span>
+    <div class="net" id="net"></div>
+  </div>
+  <nav>
+    <button data-p="play" class="on">Play</button>
+    <button data-p="history">History</button>
+    <button data-p="monitor">Monitoring</button>
+    <button data-p="settings">Settings</button>
+    <button data-p="camera">Camera</button>
+    <button data-p="wifi">Wi-Fi</button>
+    <button data-p="info">Info</button>
+  </nav>
+</header>
+<main>
+<p id="msg"></p>
+
+<!-- play: result + live view with boxes -->
+<section id="p_play" class="on">
+  <div class="panel">
+    <div class="hand" id="hand"></div>
+    <div class="tiles" id="tiles"></div>
+    <div class="sub" id="hint"></div>
+    <div class="sub" id="rollinfo"></div>
+  </div>
+  <div class="buttons" id="playbuttons">
+    <button class="act main" id="b_pause">Pause</button>
+    <button class="act" id="b_snap">Save snapshot</button>
+  </div>
+  <div class="saved" id="snapmsg"></div>
+  <div class="panel">
+    <div class="canvasbox"><canvas id="live" width="640" height="480"></canvas><div class="overlay" id="liveover"></div></div>
+    <div class="row"><label for="c_boxes" class="k">Show boxes</label><input type="checkbox" id="c_boxes" checked></div>
+    <div class="dicelist" id="dicelist"></div>
+    <div class="small" id="liveinfo" style="margin-top:8px"></div>
+  </div>
+  <p class="small">A snapshot downloads three files: the camera image, the detection as JSON and the image with the boxes.</p>
+</section>
+
+<!-- history -->
+<section id="p_history">
+  <div class="panel">
+    <table><thead><tr><th>#</th><th>Symbols</th><th>Hand</th><th>When</th></tr></thead><tbody id="hist"></tbody></table>
+    <div class="sub" id="histempty"></div>
+  </div>
+  <div class="buttons"><button class="act warn" id="b_clear">Clear history</button></div>
+</section>
+
+<!-- monitoring -->
+<section id="p_monitor">
+  <div class="grid2">
+    <div class="panel"><h2>Time per frame</h2><div id="m_times"></div></div>
+    <div class="panel"><h2>System</h2><div id="m_sys"></div></div>
+  </div>
+  <div class="panel"><h2>Total time per frame</h2><canvas id="chart" width="800" height="140"></canvas>
+    <div class="small" id="chartinfo"></div></div>
+  <div class="panel"><h2>Models</h2><div id="m_model"></div></div>
+</section>
+
+<!-- detection settings -->
+<section id="p_settings">
+  <div class="panel" id="setform"></div>
+  <div class="saved" id="savemsg"></div>
+  <div class="buttons"><button class="act warn" id="b_defaults">Defaults</button></div>
+  <p class="small">Changes apply at once and stay stored on the board. Threshold: how sure the detector must be that
+    there is a die. Stable: a result counts when this many of the last frames agree. Detector cores: 1 core is the safe default.
+    Camera settings (flip, brightness …) are on the page <b>Camera</b>.</p>
+</section>
+
+<!-- camera (trainer) -->
+<section id="p_camera">
+  <div class="panel">
+    <img id="stream" alt="live view (port 81)">
+    <p class="small">Live view for aligning the camera, in the resolution of the last image. Only one viewer at a time.
+      <b>While this page is open, the detection waits.</b></p>
+  </div>
+  <div class="panel">
+    <h2>Single image</h2>
+    <div id="res"></div>
+    <div>Exposure correction (auto):
+      <a class="act small" target="_blank" href="/api/capture?exposure=-2">&minus;2</a><a class="act small" target="_blank" href="/api/capture?exposure=-1">&minus;1</a><a class="act small" target="_blank" href="/api/capture?exposure=0">0</a><a class="act small" target="_blank" href="/api/capture?exposure=1">+1</a><a class="act small" target="_blank" href="/api/capture?exposure=2">+2</a>
+    </div>
+    <p class="small">For other programs: <code>/api/capture?res=1024x768&amp;exposure=-1</code> or fixed values <code>&amp;aec=300&amp;gain=0</code>.</p>
+  </div>
+  <div class="panel">
+    <h2>Camera settings</h2>
+    <form id="cam">
+      <div class="row"><span class="k">JPEG quality (4 = best, 40 = smallest file)</span><input name="quality" type="number" min="4" max="40"></div>
+      <div class="row"><span class="k">Flip vertically</span><input name="vflip" type="checkbox"></div>
+      <div class="row"><span class="k">Mirror horizontally (both on = camera upside down)</span><input name="hmirror" type="checkbox"></div>
+      <div class="row"><span class="k">Brightness</span><input name="brightness" type="number" min="-2" max="2"></div>
+      <div class="row"><span class="k">Contrast</span><input name="contrast" type="number" min="-2" max="2"></div>
+      <div class="row"><span class="k">Saturation</span><input name="saturation" type="number" min="-2" max="2"></div>
+      <div class="buttons" style="margin-top:10px"><button class="act main" type="submit">Save</button></div>
+      <div class="saved" id="cammsg"></div>
+    </form>
+    <p class="small">These settings also apply while playing. The models were trained with the images of the trainer -
+      keep them as they were when you captured the photos.</p>
+  </div>
+</section>
+
+<!-- wifi -->
+<section id="p_wifi">
+  <div class="panel"><h2>Current connection</h2><div id="wifistate"></div></div>
+  <div class="panel">
+    <h2>Join the home Wi-Fi</h2>
+    <p class="small">Needed for the Pokerdice Trainer. The board is then reachable at <b>http://pokerdice.local</b>
+      (or its IP address). The password is stored only on the board.</p>
+    <form id="home">
+      <select class="wide" id="nets"><option>searching …</option></select>
+      <input type="text" name="ssid" maxlength="32" required placeholder="Name (SSID)">
+      <input type="password" name="password" maxlength="64" placeholder="Password">
+      <div class="buttons"><button class="act main" type="submit">Save and restart</button></div>
+    </form>
+    <p class="small">2.4 GHz networks only. If the home Wi-Fi is not reachable for 30 s, the hotspot comes on as well.</p>
+  </div>
+  <div class="panel">
+    <h2>Hotspot only</h2>
+    <p class="small">For playing without a home network: phones join the hotspot <b id="apname">Pokerdice</b> and the page opens by itself.</p>
+    <div class="buttons"><button class="act" id="b_hotspot">Use hotspot only</button><button class="act warn" id="b_forget">Forget home Wi-Fi</button></div>
+    <p class="small">Also possible on the board: hold the BOOT button for 5 seconds.</p>
+  </div>
+</section>
+
+<!-- info -->
+<section id="p_info">
+  <div class="panel" id="infotab"></div>
+  <div class="buttons"><button class="act" id="b_restart">Restart the board</button></div>
+</section>
+</main>
+
+<script>
+"use strict";
+const HANDS = ["", "Nothing", "One Pair", "Two Pairs", "Three of a Kind", "Small Straight", "Large Straight",
+               "Full House", "Four of a Kind", "Five of a Kind"];
+const STATUS = {start:"starting …", no_models:"No models", error:"Error", searching:"searching", rolling:"rolling …",
+                stable:"detected", offline:"no connection", pause:"Paused", busy:"Trainer uses the camera"};
+const NET = {station:["Home Wi-Fi","ok"], hotspot:["Hotspot","ok"], hotspot_fallback:["Hotspot (home Wi-Fi not reached, still trying)","warn"],
+             connecting:["Connecting to the home Wi-Fi …","warn"], starting:["starting","warn"]};
+let info = null, st = null, sets = null, page = "play", lastRoll = -1, online = false;
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+const model = () => info && info.model;
+const clsName = i => { const m = model(); if (!m || i < 0) return "-"; return m.classes[i] !== undefined ? m.classes[i] : "-"; };
+const fmt = (v, d) => (v === null || v === undefined || isNaN(v)) ? "–" : Number(v).toFixed(d);
+function age(s) {
+  if (s < 60) return s + " s";
+  if (s < 3600) return Math.floor(s / 60) + " min";
+  return Math.floor(s / 3600) + " h " + Math.floor((s % 3600) / 60) + " min";
+}
+async function api(path, body) {
+  const opt = body ? {method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:new URLSearchParams(body).toString()} : {};
+  const r = await fetch(path, opt);
+  if (!r.ok) throw new Error(await r.text() || r.status);
+  return r.json();
+}
+function rows(target, list) {
+  const box = $(target);
+  box.textContent = "";
+  for (const [k, v, cls] of list) {
+    const r = el("div", "row");
+    r.appendChild(el("span", "k", k));
+    r.appendChild(el("span", "v " + (cls || ""), v));
+    box.appendChild(r);
+  }
+}
+function message(text) { $("msg").textContent = text || ""; }
+
+// ---------------------------------------------------------------- tabs
+function show(p) {
+  page = p;
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x.dataset.p === p));
+  document.querySelectorAll("section").forEach(s => s.classList.toggle("on", s.id === "p_" + p));
+  if (p === "camera") startStream(); else stopStream();
+  if (p === "play") liveLoop();
+  if (p === "wifi") scan();
+  if (p === "settings") loadSettings();
+  render();
+}
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.p));
+
+// ---------------------------------------------------------------- result
+function hint() {
+  const m = model();
+  if (!st || !m) return "";
+  if (st.status === "no_models" || st.status === "error") return st.message;
+  if (st.camera_busy) return "The trainer is using the camera - the detection waits.";
+  if (st.status === "searching") {
+    if (st.dice.length === 0) return "Put the dice in view";
+    if (st.dice.length < m.dice) return "Dice missing?";
+    if (st.dice.length > m.dice) return "Too many dice?";
+    if (st.dice.some(d => d[5] === m.unsure || d[6] < 0.5)) return "Die tilted?";
+  }
+  if (st.status === "rolling") return "hold steady …";
+  return "";
+}
+function renderResult() {
+  const tiles = $("tiles"), m = model();
+  tiles.textContent = "";
+  const n = m ? m.dice : 5;
+  let cells = [];
+  const stable = st && st.status === "stable" && st.stable;
+  if (stable) {
+    let cls = st.stable.cls.slice();
+    if (sets && sets.sort && st.dice.length === cls.length) cls = st.dice.map(d => d[5]);   // by position: left -> right
+    cells = cls.map(c => ({c, kind:"full"}));
+  } else if (st) {
+    cells = st.dice.slice(0, n).map(d => ({c:d[5], kind:(m && (d[5] === m.unsure || d[6] < 0.5)) ? "unsure" : ""}));
+  }
+  for (let i = 0; i < n; i++) {
+    const x = cells[i];
+    tiles.appendChild(el("div", "tile " + (x ? x.kind : "empty"), x ? (x.kind === "unsure" ? "?" : clsName(x.c)) : ""));
+  }
+  const hand = $("hand");
+  hand.textContent = st && st.stable ? (HANDS[st.stable.hand] || "") : "";
+  hand.style.opacity = stable ? "1" : "0.35";
+  $("hint").textContent = hint();
+  $("rollinfo").textContent = st && st.stable ? "Roll " + st.roll_no + " · " + age(st.stable.age_s) + " ago · " +
+      (sets && sets.sort ? "by position" : "by rank") : "";
+  if (st && st.roll_no !== lastRoll) {
+    if (lastRoll >= 0 && st.roll_no > lastRoll) { tiles.classList.remove("new"); void tiles.offsetWidth; tiles.classList.add("new"); }
+    lastRoll = st.roll_no;
+  }
+  $("b_pause").textContent = st && st.pause ? "Continue" : "Pause";
+  $("playbuttons").style.display = st && (st.status === "no_models" || st.status === "error") ? "none" : "";
+}
+
+// ---------------------------------------------------------------- live view with boxes (/api/frame)
+let liveFrame = 0, liveBusy = false, liveImg = null, liveDet = null, liveTimes = [];
+async function fetchFrame() {
+  const r = await fetch("/api/frame?after=" + liveFrame, {cache:"no-store"});
+  if (r.status !== 200) return null;
+  const det = JSON.parse(r.headers.get("X-Detection") || "{}");
+  const no = parseInt(r.headers.get("X-Frame") || "0", 10);
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  await new Promise((ok, fail) => { img.onload = ok; img.onerror = fail; img.src = url; });
+  liveFrame = no;
+  return {img, det, blob, url};
+}
+function drawFrame(cv, img, det, boxes) {
+  cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+  const g = cv.getContext("2d"), m = model();
+  g.drawImage(img, 0, 0);
+  if (!boxes || !det.dice) return;
+  const lw = Math.max(2, cv.width / 320), fs = Math.max(14, cv.width / 32);
+  g.font = "bold " + fs + "px system-ui, sans-serif";
+  for (const d of det.dice) {
+    const unsure = d.p < 0.5 || (m && d.cls === m.unsure);
+    const col = unsure ? "#ff9d2e" : "#3ccf6e";
+    g.lineWidth = lw; g.strokeStyle = col;
+    g.strokeRect(d.x0, d.y0, d.x1 - d.x0, d.y1 - d.y0);
+    const label = clsName(d.cls) + " " + Math.round(d.p * 100) + "%";
+    const w = g.measureText(label).width + 8, y = Math.max(fs + 4, d.y0);
+    g.fillStyle = col; g.fillRect(d.x0, y - fs - 4, w, fs + 4);
+    g.fillStyle = "#000"; g.fillText(label, d.x0 + 4, y - 4);
+  }
+}
+async function liveLoop() {
+  if (liveBusy) return;
+  liveBusy = true;
+  while (page === "play") {
+    renderOverlay();
+    try {
+      const f = await fetchFrame();
+      if (f) {
+        if (liveImg) URL.revokeObjectURL(liveImg.src);
+        liveImg = f.img; liveDet = f.det;
+        liveTimes.push(performance.now()); if (liveTimes.length > 6) liveTimes.shift();
+        renderLive();
+      } else {
+        await new Promise(r => setTimeout(r, 150));
+      }
+    } catch (e) {
+      await new Promise(r => setTimeout(r, 800));
+    }
+  }
+  liveBusy = false;
+}
+function renderOverlay() {
+  let t = "";
+  if (st && (st.status === "no_models" || st.status === "error")) t = st.message;
+  else if (st && st.camera_busy) t = "The trainer is using the camera - the detection waits.";
+  else if (!liveImg) t = "waiting for an image …";
+  else if (liveDet && liveDet.status === "paused") t = "Paused - image without detection";
+  $("liveover").textContent = t;
+}
+function renderLive() {
+  if (!liveImg) return;
+  drawFrame($("live"), liveImg, liveDet, $("c_boxes").checked);
+  renderOverlay();
+  const list = $("dicelist");
+  list.textContent = "";
+  (liveDet.dice || []).forEach(d => list.appendChild(el("span", "", clsName(d.cls) + "  " + Math.round(d.p * 100) + " %  (box " + Math.round(d.score * 100) + ")")));
+  let fps = "";
+  if (liveTimes.length > 1) fps = ((liveTimes.length - 1) * 1000 / (liveTimes[liveTimes.length - 1] - liveTimes[0])).toFixed(1);
+  $("liveinfo").textContent = liveImg.naturalWidth + "×" + liveImg.naturalHeight + " · frame " + liveFrame + (fps ? " · " + fps + " images/s on this page" : "");
+}
+$("c_boxes").onchange = renderLive;
+
+// ---------------------------------------------------------------- snapshot: camera image, JSON, image with boxes
+let snapCount = 0;
+function stamp() {
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "_" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+function download(href, name) {
+  const a = document.createElement("a");
+  a.href = href; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+$("b_snap").onclick = async () => {
+  const msg = $("snapmsg"), b = $("b_snap");
+  b.disabled = true;
+  msg.textContent = "Snapshot …";
+  try {
+    let f = null;
+    const until = Date.now() + 6000;
+    while (!f && Date.now() < until) {
+      f = await fetchFrame();
+      if (!f) await new Promise(r => setTimeout(r, 120));
+    }
+    if (!f) throw new Error("no frame");
+    snapCount++;
+    const base = "pokerdice_" + stamp() + "_" + String(snapCount).padStart(3, "0");
+    f.det.no = snapCount;
+    if (model()) f.det.class_names = model().classes;
+    download(f.url, base + ".jpg");
+    download(URL.createObjectURL(new Blob([JSON.stringify(f.det, null, 1)], {type:"application/json"})), base + ".json");
+    const cv = document.createElement("canvas");
+    drawFrame(cv, f.img, f.det, true);
+    download(cv.toDataURL("image/jpeg", 0.92), base + "_boxes.jpg");
+    liveImg = f.img; liveDet = f.det; renderLive();
+    msg.textContent = "Snapshot saved (" + base + ")";
+  } catch (e) {
+    msg.textContent = "No image received" + (st && st.camera_busy ? " - the trainer is using the camera" : "");
+  }
+  b.disabled = false;
+  setTimeout(() => { if (msg.textContent.indexOf("…") < 0) msg.textContent = ""; }, 6000);
+};
+$("b_pause").onclick = async () => {
+  try { const r = await api("/api/cmd", {do: st && st.pause ? "continue" : "pause"}); if (st) st.pause = r.pause; render(); } catch (e) {}
+};
+
+// ---------------------------------------------------------------- history
+let clearArmed = 0;
+function renderHistory() {
+  const body = $("hist");
+  body.textContent = "";
+  if (!st) return;
+  st.history.forEach((r, i) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", "", String(st.roll_no - i)));
+    tr.appendChild(el("td", "sym", r.cls.map(clsName).join(" ")));
+    tr.appendChild(el("td", "", HANDS[r.hand] || ""));
+    tr.appendChild(el("td", "dim when", age(r.age_s) + " ago"));
+    body.appendChild(tr);
+  });
+  $("histempty").textContent = st.history.length ? "" : "no rolls yet";
+}
+$("b_clear").onclick = async () => {
+  const b = $("b_clear");
+  if (Date.now() > clearArmed) { clearArmed = Date.now() + 3000; b.textContent = "Really clear?";
+    setTimeout(() => b.textContent = "Clear history", 3000); return; }
+  clearArmed = 0; b.textContent = "Clear history";
+  try { await api("/api/cmd", {do:"clear"}); lastRoll = -1; } catch (e) {}
+};
+
+// ---------------------------------------------------------------- monitoring
+function selfTest(v) { return v === 1 ? ["ok", "ok"] : (v === 0 ? ["MISMATCH", "bad"] : ["–", ""]); }
+function renderMonitor() {
+  if (!st) return;
+  const m = st.mon, s = st.sys, ms = v => fmt(v, 1) + " ms";
+  rows("m_times", [
+    ["Camera", ms(m.cam)], ["JPEG scaled down", ms(m.jpg)], ["Letterbox", ms(m.box)], ["Detector", ms(m.det)],
+    ["Decode boxes", fmt(m.dec, 2) + " ms"], ["Crops", ms(m.crop)], ["Classifier", ms(m.cls)],
+    ["Total", ms(m.total)], ["Frames/s", fmt(m.fps, 2)],
+    ["Strips decoded", m.strips + " / " + m.strips_total], ["JPEG size", fmt(m.jpeg_kb, 1) + " KB"],
+  ]);
+  rows("m_sys", [
+    ["PSRAM free (lowest)", s.psram_free + " KB (" + s.psram_min + ")"], ["Internal RAM free (lowest)", s.ram_free + " KB (" + s.ram_min + ")"],
+    ["Running for", age(s.uptime_s)], ["Detection", st.pause ? "paused" : (st.camera_busy ? "waits (trainer uses the camera)" : "running")],
+  ]);
+  if (m.timing) drawChart(m.timing);
+  const mo = model();
+  if (mo) {
+    const dt = selfTest(mo.det_test), ct = selfTest(mo.cls_test);
+    rows("m_model", [
+      ["Models", mo.config ? "built " + mo.version : "none (firmware/models/model_config.h missing)", mo.config ? "" : "bad"],
+      ["Detector", mo.det_imgsz + " px · " + mo.det_kb + " KB"],
+      ["Classifier", mo.cls_size + " px · " + mo.cls_kb + " KB"],
+      ["Classes", mo.classes.join(" ")],
+      ["Camera image", mo.width + "×" + mo.height + " · " + (mo.aec >= 0 ? "fixed exposure " + mo.aec + " / gain " + mo.gain : "auto exposure " + (mo.exposure > 0 ? "+" : "") + mo.exposure)],
+      ["Self-test detector", dt[0], dt[1]],
+      ["Self-test classifier", ct[0], ct[1]],
+      ["Strip buffers", mo.strips_internal ? "internal RAM" : "PSRAM"],
+    ]);
+  }
+}
+function drawChart(v) {
+  const cv = $("chart"), g = cv.getContext("2d"), r = window.devicePixelRatio || 1;
+  const w = cv.width = cv.clientWidth * r, h = cv.height = 140 * r;
+  g.clearRect(0, 0, w, h);
+  if (!v.length) return;
+  const max = Math.max(100, ...v) * 1.1, avg = v.reduce((a, b) => a + b, 0) / v.length;
+  g.strokeStyle = "#2c3547"; g.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(0, h * i / 4); g.lineTo(w, h * i / 4); g.stroke(); }
+  g.strokeStyle = "#4ea1ff"; g.lineWidth = 2 * r; g.beginPath();
+  const dx = w / Math.max(1, v.length - 1);
+  v.forEach((x, i) => { const px = i * dx, py = h - x / max * h; i ? g.lineTo(px, py) : g.moveTo(px, py); });
+  g.stroke();
+  g.strokeStyle = "#f2c230"; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(0, h - avg / max * h); g.lineTo(w, h - avg / max * h); g.stroke(); g.setLineDash([]);
+  $("chartinfo").textContent = "0 – " + Math.round(max) + " ms · average " + Math.round(avg) + " ms · " + v.length + " frames";
+}
+
+// ---------------------------------------------------------------- detection settings
+const STABLE = [[1, 1], [2, 3], [3, 5], [4, 6], [5, 8]];
+function control(key, label, kind, options) {
+  const r = el("div", "row"), id = "s_" + key;
+  const l = el("label", "k", label); l.htmlFor = id;
+  r.appendChild(l);
+  let c;
+  if (kind === "check") {
+    c = el("input"); c.type = "checkbox"; c.id = id; r.appendChild(c);
+  } else if (kind === "range") {
+    const box = el("span", "v");
+    c = el("input"); c.type = "range"; c.min = options[0]; c.max = options[1]; c.step = options[2]; c.id = id;
+    const out = el("span", "", ""); out.style.minWidth = "48px"; out.style.display = "inline-block"; out.id = id + "_v";
+    c.oninput = () => out.textContent = c.value + " %";
+    box.appendChild(c); box.appendChild(out); r.appendChild(box);
+  } else {
+    c = el("select"); c.id = id;
+    for (const [v, text] of options) { const o = el("option", "", text); o.value = v; c.appendChild(o); }
+    r.appendChild(c);
+  }
+  c.onchange = () => saveSetting(key, c);
+  return r;
+}
+function buildSettings() {
+  const f = $("setform");
+  f.textContent = "";
+  f.appendChild(control("threshold", "Threshold", "range", [10, 90, 5]));
+  f.appendChild(control("stable", "Stable", "select", STABLE.map(([n, m]) => [n + "/" + m, n + " of " + m + " frames"])));
+  f.appendChild(control("led", "LED flashes on a new result", "check"));
+  f.appendChild(control("sort", "Order of the dice", "select", [["0", "by rank"], ["1", "by position"]]));
+  f.appendChild(control("det_cores", "Detector cores", "select", [["0", "1"], ["1", "automatic"], ["2", "2"]]));
+  f.appendChild(control("status_log", "Status line every 30 s (serial output)", "check"));
+  fillSettings();
+}
+function fillSettings() {
+  if (!sets || !$("s_threshold")) return;
+  const set = (k, v) => { const c = $("s_" + k); if (!c) return; if (c.type === "checkbox") c.checked = !!v; else c.value = String(v); };
+  set("threshold", sets.threshold); $("s_threshold_v").textContent = sets.threshold + " %";
+  set("stable", sets.stable_n + "/" + sets.stable_m);
+  ["led", "sort", "det_cores", "status_log"].forEach(k => set(k, sets[k]));
+}
+async function loadSettings() {
+  try { sets = await api("/api/settings"); fillSettings(); } catch (e) {}
+}
+async function saveSetting(key, c) {
+  const body = {};
+  if (key === "stable") { const [n, m] = c.value.split("/"); body.stable_n = n; body.stable_m = m; }
+  else body[key] = c.type === "checkbox" ? (c.checked ? 1 : 0) : c.value;
+  try { sets = await api("/api/settings", body); $("savemsg").textContent = "saved ✔"; fillSettings(); }
+  catch (e) { $("savemsg").textContent = "not saved: " + e.message; }
+  setTimeout(() => $("savemsg").textContent = "", 2500);
+}
+let defArmed = 0;
+$("b_defaults").onclick = async () => {
+  const b = $("b_defaults");
+  if (Date.now() > defArmed) { defArmed = Date.now() + 3000; b.textContent = "Really reset these settings?";
+    setTimeout(() => b.textContent = "Defaults", 3000); return; }
+  defArmed = 0; b.textContent = "Defaults";
+  try { sets = await api("/api/settings", {defaults:1}); fillSettings(); $("savemsg").textContent = "saved ✔"; } catch (e) {}
+};
+
+// ---------------------------------------------------------------- camera page (MJPEG on port 81, only while open)
+function startStream() {
+  const port = location.port ? +location.port + 1 : 81;   // board: page on 80, live view on 81
+  $("stream").src = "http://" + location.hostname + ":" + port + "/stream?" + Date.now();
+}
+function stopStream() { const s = $("stream"); if (s.getAttribute("src")) { s.removeAttribute("src"); s.src = "data:,"; } }
+async function loadCamera() {
+  try {
+    const c = await (await fetch("/api/camera")).json(), f = $("cam");
+    f.quality.value = c.quality; f.vflip.checked = !!c.vflip; f.hmirror.checked = !!c.hmirror;
+    f.brightness.value = c.brightness; f.contrast.value = c.contrast; f.saturation.value = c.saturation;
+  } catch (e) {}
+}
+$("cam").onsubmit = async ev => {
+  ev.preventDefault(); const f = ev.target;
+  const d = new URLSearchParams({quality:f.quality.value, vflip:f.vflip.checked ? 1 : 0, hmirror:f.hmirror.checked ? 1 : 0,
+    brightness:f.brightness.value, contrast:f.contrast.value, saturation:f.saturation.value});
+  const r = await fetch("/api/camera", {method:"POST", body:d});
+  $("cammsg").textContent = r.ok ? "saved ✔" : "error: " + await r.text();
+};
+
+// ---------------------------------------------------------------- wifi
+async function scan() {
+  const s = $("nets");
+  try {
+    const l = await (await fetch("/api/wifi/scan")).json();
+    s.innerHTML = "";
+    s.appendChild(el("option", "", l.length ? "please choose" : "nothing found - type the name")).value = "";
+    l.forEach(n => { const o = el("option", "", n.ssid + " (" + n.rssi + " dBm)"); o.value = n.ssid; s.appendChild(o); });
+  } catch (e) { s.innerHTML = ""; s.appendChild(el("option", "", "search not possible - type the name")); }
+}
+$("nets").onchange = ev => { $("home").ssid.value = ev.target.value; };
+$("home").onsubmit = async ev => {
+  ev.preventDefault(); const f = ev.target;
+  const r = await fetch("/api/wifi", {method:"POST", body:new URLSearchParams({mode:"home", ssid:f.ssid.value, password:f.password.value})});
+  message(r.ok ? 'Saved. The board restarts and joins "' + f.ssid.value + '" - then open http://pokerdice.local' : "Error: " + await r.text());
+};
+$("b_hotspot").onclick = async () => {
+  const r = await fetch("/api/wifi", {method:"POST", body:new URLSearchParams({mode:"hotspot"})});
+  message(r.ok ? "Saved. The board restarts in hotspot mode." : "Error: " + await r.text());
+};
+$("b_forget").onclick = async () => {
+  if (!confirm("Forget the home Wi-Fi? The board restarts in hotspot mode.")) return;
+  const r = await fetch("/api/wifi/forget", {method:"POST"});
+  message(r.ok ? "Forgotten. The board restarts in hotspot mode." : "Error");
+};
+$("b_restart").onclick = async () => { await fetch("/api/restart", {method:"POST"}); message("The board restarts …"); };
+
+// ---------------------------------------------------------------- info, header
+function renderInfo() {
+  if (!info) return;
+  const n = NET[info.wifi.mode] || ["?", "warn"], w = info.wifi, mo = info.model;
+  $("net").innerHTML = "";
+  $("net").appendChild(el("span", n[1], n[0]));
+  if (w.ip) $("net").appendChild(document.createTextNode(" · " + w.ip));
+  $("apname").textContent = w.hotspot;
+  rows("wifistate", [["Mode", n[0]], ["Network", w.ssid || "–"], ["IP address", w.ip || "–"],
+    ["Name", w.mode === "station" ? w.hostname : "–"], ["Signal", w.mode === "station" ? w.rssi + " dBm" : "–"],
+    ["Devices in the hotspot", String(w.hotspot_clients)]]);
+  rows("infotab", [["Firmware", info.firmware], ["Board", info.board], ["Camera sensor", info.sensor],
+    ["Mode", info.mode === "detection" ? "detection" : "camera only (" + (st && st.message ? st.message : "no models") + ")"],
+    ["Models", mo.config ? "built " + mo.version + " · " + mo.classes.join(" ") : "none"],
+    ["Current resolution", info.resolution], ["Single images", String(info.captures)], ["Live view frames", String(info.stream_frames)],
+    ["Last JPEG", Math.round(info.last_jpeg_bytes / 1024) + " KB"],
+    ["Free RAM", Math.round(info.heap_free / 1024) + " KB internal, " + Math.round(info.psram_free / 1024) + " KB PSRAM"],
+    ["Running for", age(info.uptime_s)]]);
+  if (!$("res").dataset.done) {
+    info.resolutions.forEach(r => { const a = el("a", "act small", r.replace("x", "×")); a.target = "_blank"; a.href = "/api/capture?res=" + r; $("res").appendChild(a); });
+    $("res").dataset.done = 1;
+  }
+}
+async function loadInfo() {
+  try { info = await api("/api/info"); } catch (e) { return null; }
+  renderInfo();
+  if (!info.camera_ok) message("The camera did not start - check the camera cable.");
+  return info;
+}
+
+// ---------------------------------------------------------------- polling
+function render() {
+  const chip = $("chip");
+  let s = !online ? "offline" : (st ? st.status : "start");
+  if (online && st && st.pause) s = "pause";
+  else if (online && st && st.camera_busy && st.status !== "no_models" && st.status !== "error") s = "busy";
+  chip.className = "chip " + s;
+  const m = model();
+  chip.textContent = STATUS[s] + (online && st && s === "searching" && m ? " " + st.dice.length + "/" + m.dice : "");
+  if (page === "play") renderResult();
+  if (page === "monitor") renderMonitor();
+  if (page === "history") renderHistory();
+}
+async function poll() {
+  try {
+    st = await api("/api/state" + (page === "monitor" ? "?timing=1" : ""));
+    online = true;
+  } catch (e) {
+    online = false;
+  }
+  render();
+  setTimeout(poll, 500);
+}
+buildSettings();
+loadInfo().then(async i => {
+  await loadSettings();
+  loadCamera();
+  try { st = await api("/api/state"); online = true; } catch (e) {}
+  if (i && (i.wifi.mode === "hotspot" || i.wifi.mode === "hotspot_fallback") && i.wifi.saved_mode === "home" && !i.wifi.ssid) show("wifi");
+  else if (st && (st.status === "no_models" || st.status === "error")) show("camera");
+  else show("play");
+  poll();
+});
+setInterval(loadInfo, 5000);
+</script>
+</body>
+</html>

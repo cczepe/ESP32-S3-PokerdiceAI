@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Label{% endblock %}
+{% block content %}
+<h1>9 · Label</h1>
+{% include "_camera.html" %}
+
+<details class="card" {% if not st.confirmed %}open{% endif %}>
+<summary>Guide: what to do, and why?</summary>
+<div class="twocol" style="margin-top:8px"><div>
+<p><b>What for?</b> Each capture gets a box and the symbol <b>per die</b>. Only then can confusions be found later
+(e.g. “queen→jack 7×”), and errors that cancel each other out (K→A and A→K) become visible.</p>
+<ol>
+  <li>Let <b>“🤖 AI suggestions”</b> be created for the next captures. This works in batches, Claude pre-determines the symbols.</li>
+  <li><b>“Start labelling”</b>: look at the capture, check each die, correct if needed, then <b>Confirm</b> (Enter).</li>
+  <li>Target: <b>{{ target_min }}-{{ target_max }}</b> confirmed captures. You can continue later at any time.<br><span class="small">10 are enough for a first impression; for reliable numbers (e.g. to tell 95 % from 99 %) rather 100.</span></li>
+</ol>
+</div><div>
+<p><b>Rules for labelling:</b></p>
+<ul>
+  <li>Symbol = what lies <b>on top</b>.</li>
+  <li><b>“?”</b> = the die is tilted, or the top symbol really cannot be determined.</li>
+  <li>Spot is no die or several dice → choose <b>“no die”</b> and draw the dice one by one.</li>
+  <li>Half hidden dice at the image border: draw them if the symbol can be determined, otherwise “?”.</li>
+</ul>
+</div></div>
+</details>
+
+<div class="card small" style="padding:8px 14px">
+{% if model_ok %}🧠 <b>Own models found</b> (export folder, version {{ model_info }}): boxes and symbols are suggested by your
+  detector and classifier - on the computer, free of charge. Unsure dice are marked. <b>Still check every
+  die:</b> these captures are the honest test of the models. Claude can be asked in addition (🤖).
+{% else %}Suggestions by colour{{ ' and Claude' if api_key_present else '' }}. <b>Better:</b> after the first training in Colab fetch the folder
+  <code>projects/{{ folder }}/export</code> from Google Drive into the project folder (as for converting) - then your
+  own models suggest boxes and symbols. <span style="opacity:.7">({{ model_info }})</span>
+{% endif %}</div>
+
+{% if not classes %}
+<div class="warning">First confirm the symbols in <a href="{{ url_for('step_a', folder=folder, nr=3) }}">step 3</a> - the class list comes from there.</div>
+{% endif %}
+
+<div class="card">
+  <div class="twocol"><div>
+  <table>
+    <tr><td>Captures (step 8)</td><td><b>{{ st.total }}</b></td></tr>
+    <tr><td>confirmed</td><td><b>{{ st.confirmed }}</b> of {{ st.total }} <span class="small">(target {{ target_min }}-{{ target_max }})</span></td></tr>
+    <tr><td>with AI suggestion</td><td>{{ st.with_ai }}</td></tr>
+    {% if st.model_rate is not none %}<tr><td>Model symbol was right</td><td><b>{{ (st.model_rate * 100)|round|int }} %</b> of {{ st.model_compared }} dice
+      <span class="small">(only a rough indication - the exact test is done by tools/evaluate_test_images.py or Colab)</span></td></tr>{% endif %}
+    <tr><td>Claude was right</td><td>{% if st.ai_rate is not none %}<b>{{ (st.ai_rate * 100)|round|int }} %</b> of {{ st.ai_compared }} dice{% else %}–{% endif %}</td></tr>
+  </table>
+  </div><div>
+  {% if st.symbols %}
+  <table><tr><th>Symbol</th><th>Number confirmed</th></tr>
+  {% for k in (classes or []) %}<tr><td>{{ k }}</td><td>{{ st.symbols.get(k, 0) }}</td></tr>{% endfor %}</table>
+  <p class="small">All symbols should occur about equally often (except “?”).</p>
+  {% endif %}
+  </div></div>
+  <p>
+    {% set first_open = (images|rejectattr('1.confirmed')|map(attribute='0')|first) %}
+    {% if classes and images %}<a class="btn" href="{{ url_for('label_image', folder=folder, name=first_open or images[0][0]) }}">✎ Start labelling{% if first_open %} ({{ first_open }}){% endif %}</a>{% endif %}
+    <button id="ai_batch" class="second" {{ '' if classes and api_key_present and without_ai else 'disabled' }}>🤖 AI suggestions for the next 20</button>
+    <button id="ai_all" class="second" {{ '' if classes and api_key_present and without_ai else 'disabled' }}>🤖 for all ({{ without_ai|length }})</button>
+    <button id="ai_stop" class="second mini" style="display:none">Stop</button>
+    <span id="ai_status" class="small"></span>
+  </p>
+  <p class="small">Cost: a fraction of a cent per capture. It also works without AI suggestions, then you choose the symbols yourself.</p>
+</div>
+
+{% if images %}
+<h2>Captures</h2>
+<div class="photogrid" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px">
+{% for n, i in images %}
+  <a class="photocard" href="{{ url_for('label_image', folder=folder, name=n) if classes else '#' }}" style="text-decoration:none;color:inherit;padding:5px">
+    <img src="{{ url_for('raw_image', folder=folder, name=n, g=160) }}" loading="lazy">
+    <div class="small" style="display:flex;justify-content:space-between"><span>{{ n }}</span>
+      {% if i.confirmed %}<span class="ok" title="{{ i.confirmed.file }}">✔ {{ i.confirmed.dice|length }}</span>
+      {% elif (i.suggestion or {}).get('ai') %}<span title="AI suggestion present">🤖</span>
+      {% else %}<span>○</span>{% endif %}</div>
+  </a>
+{% endfor %}
+</div>
+{% endif %}
+<p class="small">Confirmed captures + labels: <code>{{ test_path }}</code>. They go to Drive automatically with the next
+<a href="{{ url_for('colab_page', folder=folder) }}">Colab package</a>.</p>
+{% endblock %}
+
+{% block script %}
+<script>
+const WITHOUT_AI = {{ without_ai|tojson }};
+let stop = false;
+async function batch(count) {
+  const list = WITHOUT_AI.slice(0, count);
+  if (!list.length) return;
+  if (!confirm(`Send ${list.length} capture(s) to Claude?`)) return;
+  stop = false;
+  document.querySelectorAll('#ai_batch,#ai_all').forEach(b => b.disabled = true);
+  document.getElementById('ai_stop').style.display = '';
+  const st = document.getElementById('ai_status');
+  let errors = 0;
+  for (let i = 0; i < list.length && !stop; i++) {
+    st.textContent = `asking Claude … ${i + 1} of ${list.length} (${list[i]})`;
+    const r = await postJSON("{{ url_for('label_ai', folder=folder, name='XXXX') }}".replace('XXXX', list[i]));
+    if (!r.ok) { errors++; st.textContent = `Error at ${list[i]}: ${r.error}`; if (/key|401|403|429|class list/i.test(r.error)) break; }
+  }
+  st.textContent = stop ? 'stopped' : (errors ? `done, ${errors} error(s)` : 'done');
+  setTimeout(() => location.reload(), errors ? 2500 : 600);
+}
+document.getElementById('ai_batch').onclick = () => batch(20);
+document.getElementById('ai_all').onclick = () => batch(100000);
+document.getElementById('ai_stop').onclick = () => { stop = true; };
+</script>
+{% endblock %}

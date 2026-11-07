@@ -1,0 +1,204 @@
+{% extends "photo_step.html" %}
+
+{% block guide %}
+<div class="twocol"><div>
+<p><b>What for?</b> Poker dice are not standardised. Which symbol lies next to which and how it is rotated differs between manufacturers.
+The 3D die in Blender must match yours <b>exactly</b>. Otherwise the model sees neighbour combinations in training that never occur in reality,
+and learns wrong hints from the side faces.</p>
+<ol>
+  <li><b>4 corner photos</b> with the phone: at an angle onto a corner, so that <b>3 faces</b> are equally well visible.
+    <ul><li>Photo 1 and 2: two <b>opposite</b> corners of the top face (e.g. front-right and back-left).</li>
+        <li>Turn the die over. Photo 3 and 4: again two opposite corners.</li></ul>
+    So each face is seen at least once with its neighbours.</li>
+  <li>“🤖 Suggest layout” fills in the die net from the photos.</li>
+  <li>Correct it in the net: choose a symbol, rotate with <b>↺ ↻</b>. Turn the <b>3D preview</b> on the right with the corner buttons to the same corner as
+     a photo and compare: same symbols, same rotation?</li>
+  <li><b>Cross-check</b> directly on the real die: enter “what lies opposite?” for each symbol.</li>
+  <li>When everything matches: <b>“Confirm layout”</b>.</li>
+</ol>
+</div><div>
+<p><b>The die net:</b> the die unfolded, seen from outside. Opposite lie top-bottom, front-back, left-right.</p>
+<svg viewBox="0 0 200 210" width="190" style="background:#fafafa;border:1px solid #ddd;border-radius:6px">
+  <g font-size="11" text-anchor="middle" fill="#333">
+  <rect x="70" y="5" width="50" height="50" fill="#fff" stroke="#555"/><text x="95" y="34">back</text>
+  <rect x="20" y="55" width="50" height="50" fill="#fff" stroke="#555"/><text x="45" y="84">left</text>
+  <rect x="70" y="55" width="50" height="50" fill="#e7f1ea" stroke="#555"/><text x="95" y="84">top</text>
+  <rect x="120" y="55" width="50" height="50" fill="#fff" stroke="#555"/><text x="145" y="84">right</text>
+  <rect x="70" y="105" width="50" height="50" fill="#fff" stroke="#555"/><text x="95" y="134">front</text>
+  <rect x="70" y="155" width="50" height="50" fill="#fff" stroke="#555"/><text x="95" y="184">bottom</text></g>
+</svg>
+<p class="small"><b>Rotation:</b> a rotation is recorded for pips (9, 10) and the ace too - compare closely with the corner photos
+(e.g. in which direction the rows of pips run).</p>
+<p><b>Typical mistakes:</b> only corners of one side photographed (the bottom is then missing), corner not centred (one face almost invisible).</p>
+</div></div>
+{% endblock %}
+
+{% block after_photos %}
+<h2>Die net and 3D preview</h2>
+{% if not classes %}
+<div class="warning">First confirm the symbols in <a href="{{ url_for('step_a', folder=folder, nr=3) }}">step 3</a>.</div>
+{% else %}
+<div class="card">
+  <p style="margin-top:0"><button id="layout_ai" {{ '' if api_key_present and photo_list else 'disabled' }}>🤖 Suggest layout</button>
+    <span id="ai_status" class="small">{% if not photo_list %}First take the corner photos.{% else %}Claude sees the 6 faces and the corner photos and fills in the net.{% endif %}</span></p>
+  {% if layout.ai_remark %}<p class="small">Claude: {{ layout.ai_remark }}</p>{% endif %}
+
+  <div style="display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start">
+    <div>
+      <div class="net">
+        {% for field in fields %}
+        <div class="netfield" data-field="{{ field }}" style="grid-area:{{ field }}">
+          <div class="netimg"><img alt=""><span class="nettext"></span></div>
+          <div class="netbar">
+            <button class="mini second turn" data-r="-90" title="counter-clockwise">↺</button>
+            <select class="netsym"><option value="">–</option>{% for k in classes %}<option>{{ k }}</option>{% endfor %}</select>
+            <button class="mini second turn" data-r="90" title="clockwise">↻</button>
+          </div>
+          <div class="small" style="text-align:center">{{ field }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <div class="scene" id="scene" title="turn with the mouse">
+        <div class="die3d" id="die3d">
+          {% for field in fields %}<div class="face f-{{ field }}" data-field="{{ field }}"><img alt=""><span class="nettext"></span></div>{% endfor %}
+        </div>
+      </div>
+      <div class="small" style="margin:6px 0">View onto a corner (to compare with the corner photos):</div>
+      <div style="display:grid;grid-template-columns:repeat(4,auto);gap:4px">
+        <button class="mini second view" data-rx="-30" data-ry="-45">top front-right</button>
+        <button class="mini second view" data-rx="-30" data-ry="-135">top back-right</button>
+        <button class="mini second view" data-rx="-30" data-ry="135">top back-left</button>
+        <button class="mini second view" data-rx="-30" data-ry="45">top front-left</button>
+        <button class="mini second view" data-rx="30" data-ry="-45">bottom front-right</button>
+        <button class="mini second view" data-rx="30" data-ry="-135">bottom back-right</button>
+        <button class="mini second view" data-rx="30" data-ry="135">bottom back-left</button>
+        <button class="mini second view" data-rx="30" data-ry="45">bottom front-left</button>
+      </div>
+      {% if photo_list %}
+      <div style="display:flex;gap:6px;margin-top:8px">{% for f in photo_list %}
+        <a href="{{ url_for('photo_image', folder=folder, step=step_id, name=f.name, kind='original') }}" target="_blank">
+        <img src="{{ url_for('photo_image', folder=folder, step=step_id, name=f.name, g=300) }}" style="height:90px;border-radius:4px"></a>{% endfor %}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<h2>Cross-check: what lies opposite?</h2>
+<div class="card">
+  <p style="margin-top:0" class="small">Look at the real die (not at the net!). It is enough to enter one symbol of each pair - the counterpart is added automatically.</p>
+  <table style="width:auto">{% for k in classes %}
+    <tr><td>Opposite <b>{{ k }}</b> lies</td>
+      <td><select class="cc" data-sym="{{ k }}"><option value="">–</option>{% for t in classes if t != k %}<option>{{ t }}</option>{% endfor %}</select></td></tr>
+  {% endfor %}</table>
+</div>
+
+<div class="card">
+  <div id="problems"></div>
+  <p><button id="confirm">✔ Confirm layout</button> <span id="conf_status">
+    {% if layout.confirmed %}<span class="ok">confirmed on {{ (layout.confirmed_at or '')|replace('T',' ') }}</span>{% endif %}</span></p>
+  <p class="small">Every change in the net or in the cross-check cancels the confirmation - then simply confirm again.</p>
+</div>
+{% endif %}
+<style>
+.net{display:grid;grid-template-areas:". back ." "left top right" ". front ." ". bottom .";grid-template-columns:repeat(3,128px);gap:6px}
+.netfield{background:#fff;border:1px solid #bbb;border-radius:6px;padding:4px}
+.netfield[data-field=top]{background:#e7f1ea}
+.netimg{width:118px;height:118px;margin:auto;position:relative;overflow:hidden;border-radius:4px;background:#f4f1ea;display:flex;align-items:center;justify-content:center}
+.netimg img,.face img{width:100%;height:100%;object-fit:cover;transition:transform .2s}
+.nettext{position:absolute;font-size:2em;font-weight:700;color:#444;transition:transform .2s}
+.netbar{display:flex;justify-content:space-between;align-items:center;margin-top:3px}
+.netbar select{width:56px}
+.scene{width:220px;height:220px;perspective:700px;display:flex;align-items:center;justify-content:center;cursor:grab;background:#f3f5f3;border-radius:8px}
+.die3d{width:120px;height:120px;position:relative;transform-style:preserve-3d;transition:transform .35s}
+.face{position:absolute;width:120px;height:120px;overflow:hidden;background:#f4f1ea;border:1px solid #8a8;border-radius:10px;display:flex;align-items:center;justify-content:center;backface-visibility:hidden}
+.f-top{transform:rotateX(90deg) translateZ(60px)}
+.f-bottom{transform:rotateX(-90deg) translateZ(60px)}
+.f-front{transform:translateZ(60px)}
+.f-back{transform:rotateY(180deg) translateZ(60px)}
+.f-right{transform:rotateY(90deg) translateZ(60px)}
+.f-left{transform:rotateY(-90deg) translateZ(60px)}
+</style>
+{% endblock %}
+
+{% block script2 %}
+{% if classes %}
+<script>
+const OFFSET = {{ offset|tojson }};
+const SYMBOL_IMG = {
+  {% for k in classes %}{% if symbol_photo.get(k) and p.symbols.face_crops.get(symbol_photo[k]) %}"{{ k }}": "{{ url_for('photo_image', folder=folder, step='3_faces', name=symbol_photo[k], kind='face_crop', g=240) }}",{% endif %}{% endfor %}
+};
+let net = {{ layout.net|tojson }};
+let crossCheck = {{ layout.cross_check|tojson }};
+const URL_SAVE = "{{ url_for('layout_save', folder=folder) }}";
+
+function showField(el, field, extra) {
+  const e = net[field], img = el.querySelector('img'), txt = el.querySelector('.nettext');
+  const rot = e.rotation + extra;
+  if (e.symbol && SYMBOL_IMG[e.symbol]) { img.src = SYMBOL_IMG[e.symbol]; img.style.display = ''; txt.textContent = ''; }
+  else { img.style.display = 'none'; txt.textContent = e.symbol || '?'; }
+  img.style.transform = txt.style.transform = `rotate(${rot}deg)`;
+}
+function showAll() {
+  document.querySelectorAll('.netfield').forEach(el => {
+    const f = el.dataset.field; showField(el, f, 0); el.querySelector('.netsym').value = net[f].symbol || '';
+  });
+  document.querySelectorAll('.face').forEach(el => showField(el, el.dataset.field, OFFSET[el.dataset.field]));
+  document.querySelectorAll('select.cc').forEach(s => s.value = crossCheck[s.dataset.sym] || '');
+}
+let timer = null;
+function save(confirm) {
+  clearTimeout(timer);
+  return new Promise(res => {
+    timer = setTimeout(async () => {
+      const r = await postJSON(URL_SAVE, {net, cross_check: crossCheck, confirm: !!confirm});
+      const pr = document.getElementById('problems');
+      const list = r.problems || [];
+      pr.innerHTML = list.length ? '<div class="warning">' + list.map(x => '⚠ ' + x).join('<br>') + '</div>'
+                                 : '<div class="note">✔ Net and cross-check are consistent.</div>';
+      document.getElementById('conf_status').innerHTML = r.ok && r.confirmed ? '<span class="ok">✔ confirmed</span>' : (r.ok ? '' : '<span class="bad">' + r.error + '</span>');
+      res(r);
+    }, confirm ? 0 : 300);
+  });
+}
+document.querySelectorAll('.netfield').forEach(el => {
+  const f = el.dataset.field;
+  el.querySelector('.netsym').onchange = ev => { net[f].symbol = ev.target.value || null; showAll(); save(); };
+  el.querySelectorAll('.turn').forEach(b => b.onclick = () => { net[f].rotation = (net[f].rotation + (+b.dataset.r) + 360) % 360; showAll(); save(); });
+});
+document.querySelectorAll('select.cc').forEach(s => s.onchange = () => {
+  const a = s.dataset.sym, b = s.value;
+  for (const k in crossCheck) if (crossCheck[k] === a && k !== b) delete crossCheck[k];
+  if (b) { crossCheck[a] = b; crossCheck[b] = a; } else delete crossCheck[a];
+  showAll(); save();
+});
+// turn in 3D
+let rx = -30, ry = -45;
+const d3 = document.getElementById('die3d');
+function turn() { d3.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg)`; }
+document.querySelectorAll('.view').forEach(b => b.onclick = () => { rx = +b.dataset.rx; ry = +b.dataset.ry; turn(); });
+let drag = null;
+const sc = document.getElementById('scene');
+sc.addEventListener('mousedown', ev => { drag = {x: ev.clientX, y: ev.clientY, rx, ry}; d3.style.transition = 'none'; });
+window.addEventListener('mousemove', ev => { if (!drag) return; ry = drag.ry + (ev.clientX - drag.x) * 0.6; rx = drag.rx - (ev.clientY - drag.y) * 0.6; turn(); });
+window.addEventListener('mouseup', () => { if (drag) { drag = null; d3.style.transition = ''; } });
+document.getElementById('confirm').onclick = async () => {
+  const r = await save(true);
+  if (r.ok && r.confirmed) setTimeout(() => location.reload(), 800);
+};
+const aiL = document.getElementById('layout_ai');
+if (aiL) aiL.onclick = async () => {
+  aiL.disabled = true; document.getElementById('ai_status').textContent = 'asking Claude … (about 20-40 s)';
+  const r = await postJSON("{{ url_for('layout_ai', folder=folder) }}");
+  if (r.ok) location.reload(); else { aiL.disabled = false; document.getElementById('ai_status').innerHTML = '<span class="bad">' + r.error + '</span>'; }
+};
+showAll(); turn();
+{% if layout.net.top.symbol or layout.cross_check %}
+// show problems when loading
+(() => { const pr = document.getElementById('problems'); const list = {{ problems|tojson }};
+  pr.innerHTML = list.length ? '<div class="warning">' + list.map(x => '⚠ ' + x).join('<br>') + '</div>' : '<div class="note">✔ Net and cross-check are consistent.</div>'; })();
+{% endif %}
+</script>
+{% endif %}
+{% endblock %}
